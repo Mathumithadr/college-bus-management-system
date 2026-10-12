@@ -1,0 +1,14 @@
+{
+  "name": "college-bus-management-backend",
+  "version": "1.0.0",
+  "description": "Backend for College Bus Management System",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": ["college", "bus", "management"],
+  "license": "MIT"
+}
