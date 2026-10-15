@@ -1,10 +1,15 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const schema = new mongoose.Schema(
+const tripEventSchema = new mongoose.Schema(
   {
-    tripId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip', required: true },
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Trip',
+      required: [true, 'Trip is required'],
+    },
     eventType: {
       type: String,
+      required: [true, 'Event type is required'],
       enum: [
         'trip_started',
         'trip_ended',
@@ -13,16 +18,33 @@ const schema = new mongoose.Schema(
         'handover_accepted',
         'handover_rejected',
         'handover_overridden',
+        'delay_reported',
+        'stop_confirmed',
       ],
-      required: true,
     },
-    actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    eventTime: { type: Date, default: Date.now },
-    details: { type: mongoose.Schema.Types.Mixed },
+    actorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
+    },
+    eventTime: {
+      type: Date,
+      default: Date.now,
+    },
+    details: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
   },
-  { timestamps: { createdAt: true, updatedAt: false } }
+  {
+    // Append-only history — no modification timestamp needed
+    timestamps: { createdAt: true, updatedAt: false },
+    collection: 'tripEvents',
+  }
 );
 
-schema.index({ tripId: 1, eventTime: 1 });
+tripEventSchema.index({ tripId: 1, eventTime: 1 });
+// For filtered history queries: e.g., "all handover events for this trip"
+tripEventSchema.index({ tripId: 1, eventType: 1, eventTime: 1 });
 
-export default mongoose.model('TripEvent', schema);
+module.exports = mongoose.model('TripEvent', tripEventSchema);

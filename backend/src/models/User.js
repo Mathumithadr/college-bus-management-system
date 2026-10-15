@@ -1,54 +1,91 @@
-import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
+const mongoose = require('mongoose');
 
 const userSchema = new mongoose.Schema(
   {
-    name: { type: String, required: true, trim: true },
+    name: {
+      type: String,
+      required: [true, 'Name is required'],
+      trim: true,
+      maxlength: [100, 'Name cannot exceed 100 characters'],
+    },
     email: {
       type: String,
-      required: true,
+      required: [true, 'Email is required'],
       unique: true,
       lowercase: true,
       trim: true,
-      index: true,
     },
-    passwordHash: { type: String, required: true, select: false },
+    passwordHash: {
+      type: String,
+      required: [true, 'Password hash is required'],
+      select: false, // Never returned in API responses
+    },
     role: {
       type: String,
-      required: true,
-      enum: ['student', 'staff', 'admin', 'representative'],
-      default: 'student',
+      required: [true, 'Role is required'],
+      enum: ['student', 'staff', 'admin'],
+      // NOTE: Representative status is NOT a role.
+      //       It is determined by an active RepresentativeAssignment document.
     },
-    permissions: [{ type: String }],
-    phone: { type: String, trim: true },
-    isActive: { type: Boolean, default: true },
+    permissions: {
+      type: [String],
+      default: [],
+    },
+    department: {
+      type: String,
+      trim: true,
+      maxlength: [100, 'Department cannot exceed 100 characters'],
+      default: null, // Used for faculty dropdown (e.g., "Computer Science")
+    },
+    phone: {
+      type: String,
+      trim: true,
+      maxlength: [20, 'Phone number cannot exceed 20 characters'],
+      default: null,
+    },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+    // Account security fields
+    mustChangePassword: {
+      type: Boolean,
+      default: false,
+    },
+    failedLoginAttempts: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lockUntil: {
+      type: Date,
+      default: null,
+    },
+    lastLoginAt: {
+      type: Date,
+      default: null,
+    },
+    // Password reset tokens (excluded from all API responses)
+    resetPasswordToken: {
+      type: String,
+      select: false,
+      default: null,
+    },
+    resetPasswordExpires: {
+      type: Date,
+      select: false,
+      default: null,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: 'users',
+  }
 );
 
-// Normalize email before save
-userSchema.pre('save', function (next) {
-  if (this.isModified('email')) {
-    this.email = this.email.toLowerCase().trim();
-  }
-  next();
+// Virtual: check if account is currently locked
+userSchema.virtual('isLocked').get(function () {
+  return this.lockUntil && this.lockUntil > Date.now();
 });
 
-// Hash password method (call manually or via static)
-userSchema.methods.setPassword = async function (plainPassword) {
-  this.passwordHash = await bcrypt.hash(plainPassword, 12);
-};
-
-userSchema.methods.comparePassword = function (plainPassword) {
-  return bcrypt.compare(plainPassword, this.passwordHash);
-};
-
-// Hide sensitive fields on JSON
-userSchema.methods.toJSON = function () {
-  const obj = this.toObject();
-  delete obj.passwordHash;
-  delete obj.__v;
-  return obj;
-};
-
-export default mongoose.model('User', userSchema);
+module.exports = mongoose.model('User', userSchema);

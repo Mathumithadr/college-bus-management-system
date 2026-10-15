@@ -1,43 +1,78 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const schema = new mongoose.Schema(
+const tripSchema = new mongoose.Schema(
   {
-    busId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus', required: true },
-    routeId: { type: mongoose.Schema.Types.ObjectId, ref: 'Route', required: true },
+    busId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Bus',
+      required: [true, 'Bus is required'],
+    },
+    routeId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Route',
+      required: [true, 'Route is required'],
+    },
     activeRepresentativeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'Active representative is required'],
     },
-    startedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    startTime: { type: Date, default: Date.now },
-    endTime: { type: Date },
+    startedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Trip starter is required'],
+    },
+    startTime: {
+      type: Date,
+      required: [true, 'Start time is required'],
+      default: Date.now,
+    },
+    endTime: {
+      type: Date,
+      default: null,
+    },
     tripStatus: {
       type: String,
-      enum: ['not_started', 'in_progress', 'completed', 'cancelled'],
-      default: 'not_started',
+      // 'not_started' removed: trips are only created when the rep starts them
+      enum: ['in_progress', 'completed', 'cancelled'],
+      default: 'in_progress',
     },
     delayStatus: {
       type: String,
       enum: ['on_time', 'delayed'],
       default: 'on_time',
     },
+    // Route progress tracking — updated by backend 3-sample accumulator ONLY
+    currentStopSequence: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    lastConfirmedStopName: {
+      type: String,
+      default: null,
+    },
+    // GPS quality tracking
+    nearStopOrder: {
+      type: Number,
+      default: null, // Sequence number of stop the bus is currently near
+    },
+    gpsQuality: {
+      type: String,
+      enum: ['GOOD', 'POOR', null],
+      default: null,
+    },
   },
-  { timestamps: true }
-);
-
-schema.index({ busId: 1, tripStatus: 1 });
-schema.index({ routeId: 1, startTime: -1 });
-schema.index({ activeRepresentativeId: 1, tripStatus: 1 });
-
-// Prevent multiple active trips per bus (application-level enforcement recommended too)
-schema.index(
-  { busId: 1 },
   {
-    unique: true,
-    partialFilterExpression: { tripStatus: 'in_progress' },
-    name: 'one_active_trip_per_bus',
+    timestamps: true,
+    collection: 'trips',
   }
 );
 
-export default mongoose.model('Trip', schema);
+tripSchema.index({ busId: 1, tripStatus: 1 });
+tripSchema.index({ routeId: 1, startTime: -1 });
+tripSchema.index({ activeRepresentativeId: 1, tripStatus: 1 });
+// Compound index for delay verification queries by staff
+tripSchema.index({ busId: 1, startTime: 1, delayStatus: 1 });
+
+module.exports = mongoose.model('Trip', tripSchema);

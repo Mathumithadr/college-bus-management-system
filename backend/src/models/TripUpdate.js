@@ -1,23 +1,49 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const schema = new mongoose.Schema(
+const tripUpdateSchema = new mongoose.Schema(
   {
-    tripId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip', required: true },
-    busId: { type: mongoose.Schema.Types.ObjectId, ref: 'Bus', required: true },
-    reportedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Trip',
+      required: [true, 'Trip is required'],
+    },
+    busId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Bus',
+      required: [true, 'Bus is required'],
+    },
+    reportedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Reporter is required'],
+    },
     updateType: {
       type: String,
-      enum: ['delay', 'breakdown', 'route_deviation', 'other'],
-      required: true,
+      required: [true, 'Update type is required'],
+      enum: ['delay', 'route_diverted', 'breakdown', 'other'],
     },
-    reason: { type: String, trim: true },
-    reportedAt: { type: Date, default: Date.now },
-    details: { type: mongoose.Schema.Types.Mixed },
+    reason: {
+      type: String,
+      required: [true, 'Reason is required'],
+      trim: true,
+      maxlength: [500, 'Reason cannot exceed 500 characters'],
+    },
+    reportedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    details: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: 'tripUpdates',
+  }
 );
 
-schema.index({ tripId: 1, reportedAt: -1 });
-schema.index({ busId: 1, reportedAt: -1 });
+tripUpdateSchema.index({ tripId: 1, reportedAt: -1 });
+tripUpdateSchema.index({ busId: 1, reportedAt: -1 });
 
-export default mongoose.model('TripUpdate', schema);
+module.exports = mongoose.model('TripUpdate', tripUpdateSchema);

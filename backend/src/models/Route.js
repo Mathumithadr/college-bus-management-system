@@ -1,56 +1,77 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const stopSchema = new mongoose.Schema(
   {
-    stopName: { type: String, required: true, trim: true },
+    stopName: {
+      type: String,
+      required: [true, 'Stop name is required'],
+      trim: true,
+      maxlength: [100, 'Stop name cannot exceed 100 characters'],
+    },
     latitude: {
       type: Number,
-      required: true,
-      min: -90,
-      max: 90,
+      required: [true, 'Latitude is required'],
+      min: [-90, 'Latitude must be >= -90'],
+      max: [90, 'Latitude must be <= 90'],
     },
     longitude: {
       type: Number,
-      required: true,
-      min: -180,
-      max: 180,
+      required: [true, 'Longitude is required'],
+      min: [-180, 'Longitude must be >= -180'],
+      max: [180, 'Longitude must be <= 180'],
     },
-    sequence: { type: Number, required: true, min: 1 },
+    sequence: {
+      type: Number,
+      required: [true, 'Sequence order is required'],
+      min: 1,
+    },
   },
-  { _id: false }
+  { _id: true }
 );
 
 const routeSchema = new mongoose.Schema(
   {
-    routeName: { type: String, required: true, trim: true },
-    routeNumber: { type: String, required: true, unique: true, trim: true },
+    routeName: {
+      type: String,
+      required: [true, 'Route name is required'],
+      trim: true,
+      maxlength: [100, 'Route name cannot exceed 100 characters'],
+    },
+    routeNumber: {
+      type: String,
+      required: [true, 'Route number is required'],
+      unique: true,
+      trim: true,
+      maxlength: [20, 'Route number cannot exceed 20 characters'],
+    },
     busId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Bus',
-      required: true,
-      index: true,
+      required: [true, 'Bus reference is required'],
     },
     stops: {
       type: [stopSchema],
+      default: [],
       validate: {
-        validator: (stops) => stops.length > 0,
-        message: 'A route must have at least one stop',
+        validator: function (stops) {
+          // Ensure no duplicate sequence numbers within the same route
+          const sequences = stops.map((s) => s.sequence);
+          return sequences.length === new Set(sequences).size;
+        },
+        message: 'Each stop must have a unique sequence number',
       },
     },
-    isActive: { type: Boolean, default: true },
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: 'routes',
+  }
 );
 
-// Ensure unique sequence within a route
-routeSchema.pre('validate', function (next) {
-  if (this.stops && this.stops.length) {
-    const sequences = this.stops.map((s) => s.sequence);
-    if (new Set(sequences).size !== sequences.length) {
-      return next(new Error('Stop sequences must be unique within a route'));
-    }
-  }
-  next();
-});
+routeSchema.index({ busId: 1 });
 
-export default mongoose.model('Route', routeSchema);
+module.exports = mongoose.model('Route', routeSchema);

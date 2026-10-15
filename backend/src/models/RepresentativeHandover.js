@@ -1,32 +1,63 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const schema = new mongoose.Schema(
+const representativeHandoverSchema = new mongoose.Schema(
   {
-    tripId: { type: mongoose.Schema.Types.ObjectId, ref: 'Trip', required: true },
+    tripId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Trip',
+      required: [true, 'Trip is required'],
+    },
     previousRepresentativeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'Previous representative is required'],
     },
     newRepresentativeId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      required: [true, 'New representative is required'],
     },
     status: {
       type: String,
+      // pending:    Normal handover requested, awaiting vice rep acceptance
+      // accepted:   Vice rep accepted → trip.activeRepresentativeId updated atomically
+      // rejected:   Vice rep declined (primary rep retains control)
+      // overridden: Admin emergency forced handover (bypasses acceptance flow)
       enum: ['pending', 'accepted', 'rejected', 'overridden'],
       default: 'pending',
     },
-    requestedAt: { type: Date, default: Date.now },
-    respondedAt: { type: Date },
-    adminOverrideBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-    reason: { type: String, trim: true },
+    requestedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    respondedAt: {
+      type: Date,
+      default: null, // Set when vice rep accepts or rejects
+    },
+    respondedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null, // Set when vice rep responds
+    },
+    adminOverrideBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null, // Set only on admin emergency override
+    },
+    reason: {
+      type: String,
+      trim: true,
+      maxlength: [500, 'Reason cannot exceed 500 characters'],
+      default: null,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: 'representativeHandovers',
+  }
 );
 
-schema.index({ tripId: 1, requestedAt: -1 });
-schema.index({ newRepresentativeId: 1, status: 1 });
+representativeHandoverSchema.index({ tripId: 1, requestedAt: -1 });
+representativeHandoverSchema.index({ newRepresentativeId: 1, status: 1 });
 
-export default mongoose.model('RepresentativeHandover', schema);
+module.exports = mongoose.model('RepresentativeHandover', representativeHandoverSchema);

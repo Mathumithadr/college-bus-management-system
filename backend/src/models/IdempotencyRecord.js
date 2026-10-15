@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 
 const schema = new mongoose.Schema(
   {
-    actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    actorId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: false },
+    clientIdentifier: { type: String, trim: true },
     operationType: { type: String, required: true, trim: true },
     idempotencyKey: { type: String, required: true, trim: true },
     requestHash: { type: String, required: true },
@@ -15,7 +16,7 @@ const schema = new mongoose.Schema(
 );
 
 schema.index(
-  { actorId: 1, operationType: 1, idempotencyKey: 1 },
+  { idempotencyKey: 1, operationType: 1 },
   { unique: true, name: 'unique_idempotency_key' }
 );
 schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });

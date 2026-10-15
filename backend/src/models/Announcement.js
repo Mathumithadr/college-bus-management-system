@@ -1,36 +1,70 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
-const schema = new mongoose.Schema(
+const announcementSchema = new mongoose.Schema(
   {
-    title: { type: String, required: true, trim: true },
-    message: { type: String, required: true, trim: true },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+    title: {
+      type: String,
+      required: [true, 'Title is required'],
+      trim: true,
+      maxlength: [200, 'Title cannot exceed 200 characters'],
+    },
+    message: {
+      type: String,
+      required: [true, 'Message body is required'],
+      trim: true,
+      maxlength: [2000, 'Message cannot exceed 2000 characters'],
+    },
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'Creator is required'],
+    },
     targetType: {
       type: String,
+      required: [true, 'Target type is required'],
       enum: ['general', 'route', 'bus'],
-      default: 'general',
-      required: true,
     },
-    targetId: { type: mongoose.Schema.Types.ObjectId },
-    isPublished: { type: Boolean, default: false },
-    publishedAt: { type: Date },
-    editedAt: { type: Date },
+    targetId: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+      // Required when targetType is 'route' or 'bus'
+      // Must be null when targetType is 'general'
+    },
+    isPublished: {
+      type: Boolean,
+      default: false,
+    },
+    publishedAt: {
+      type: Date,
+      default: null,
+    },
+    editedAt: {
+      type: Date,
+      default: null,
+    },
   },
-  { timestamps: true }
+  {
+    timestamps: true,
+    collection: 'announcements',
+  }
 );
 
-// General announcements should not have a targetId
-schema.pre('validate', function (next) {
+// Conditional validation: targetId must be consistent with targetType
+announcementSchema.pre('validate', function (next) {
   if (this.targetType === 'general' && this.targetId) {
-    return next(new Error('General announcements must not contain targetId'));
+    return next(new Error('General announcements must not have a targetId'));
   }
   if (this.targetType !== 'general' && !this.targetId) {
-    return next(new Error('Route/bus announcements require targetId'));
+    return next(
+      new Error(`Announcements with targetType '${this.targetType}' require a targetId`)
+    );
   }
   next();
 });
 
-schema.index({ isPublished: 1, publishedAt: -1 });
-schema.index({ targetType: 1, targetId: 1, publishedAt: -1 });
+announcementSchema.index({ isPublished: 1, publishedAt: -1 });
+announcementSchema.index({ targetType: 1, targetId: 1, publishedAt: -1 });
+// For admin dashboard: "show my announcements" filter
+announcementSchema.index({ createdBy: 1, createdAt: -1 });
 
-export default mongoose.model('Announcement', schema);
+module.exports = mongoose.model('Announcement', announcementSchema);
