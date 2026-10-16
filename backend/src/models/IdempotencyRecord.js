@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const schema = new mongoose.Schema(
   {
@@ -21,4 +21,4 @@ schema.index(
 );
 schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-export default mongoose.model('IdempotencyRecord', schema);
+module.exports = mongoose.model('IdempotencyRecord', schema);

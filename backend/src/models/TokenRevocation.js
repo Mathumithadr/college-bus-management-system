@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+const mongoose = require('mongoose');
 
 const schema = new mongoose.Schema(
   {
@@ -18,4 +18,4 @@ const schema = new mongoose.Schema(
 // TTL: remove after token naturally expires
 schema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 
-export default mongoose.model('TokenRevocation', schema);
+module.exports = mongoose.model('TokenRevocation', schema);

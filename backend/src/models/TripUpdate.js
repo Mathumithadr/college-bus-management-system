@@ -28,6 +28,12 @@ const tripUpdateSchema = new mongoose.Schema(
       trim: true,
       maxlength: [500, 'Reason cannot exceed 500 characters'],
     },
+    expectedDelayMinutes: {
+      type: Number,
+      default: 0,
+      min: [0, 'Delay minutes cannot be negative'],
+      max: [240, 'Delay minutes cannot exceed 240 (4 hours)'],
+    },
     reportedAt: {
       type: Date,
       default: Date.now,
