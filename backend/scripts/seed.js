@@ -1,5 +1,7 @@
+// Seed script to initialize default Admin, Staff, Student, and Fleet data in MongoDB
 import { connectDB } from '../src/config/database.js';
 import mongoose from 'mongoose';
+import { hashPassword } from '../src/utils/password.js';
 import {
   User,
   Bus,
@@ -21,60 +23,88 @@ const seed = async () => {
       RepresentativeAssignment.deleteMany({}),
     ]);
 
-    console.log('👤 Creating users...');
-    const admin = new User({
-      name: 'Admin User',
+    console.log('👤 Creating users with bcrypt password hashes...');
+    const adminPasswordHash = await hashPassword('Admin@123');
+    const studentPasswordHash = await hashPassword('Student@123');
+    const staffPasswordHash = await hashPassword('Staff@123');
+
+    // 1. Admin Account
+    const admin = await User.create({
+      name: 'System Admin',
       email: 'admin@college.edu',
+      passwordHash: adminPasswordHash,
       role: 'admin',
       permissions: ['MANAGE_BUSES', 'MANAGE_ROUTES', 'MANAGE_ASSIGNMENTS'],
+      isActive: true,
     });
-    await admin.setPassword('Admin@123');
 
-    const staff = new User({
-      name: 'Staff User',
+    // Also create admin@test.com for convenience
+    await User.create({
+      name: 'Admin Test',
+      email: 'admin@test.com',
+      passwordHash: await hashPassword('Password123!'),
+      role: 'admin',
+      isActive: true,
+    });
+
+    // 2. Staff / Faculty Account
+    const staff = await User.create({
+      name: 'Dr. Ramesh Kumar',
       email: 'staff@college.edu',
+      passwordHash: staffPasswordHash,
       role: 'staff',
+      department: 'Computer Science',
+      isActive: true,
     });
-    await staff.setPassword('Staff@123');
 
-    const student = new User({
-      name: 'John Student',
+    // 3. Regular Student Account
+    const student = await User.create({
+      name: 'Alex Kumar',
       email: 'student@college.edu',
+      passwordHash: studentPasswordHash,
       role: 'student',
+      department: 'Computer Science',
+      isActive: true,
     });
-    await student.setPassword('Student@123');
 
-    const rep = new User({
-      name: 'Rep User',
+    // 4. Student Representative (Role is 'student', rep granted via RepresentativeAssignment)
+    const repStudent = await User.create({
+      name: 'Rohan Sharma',
       email: 'rep@college.edu',
-      role: 'representative',
-      permissions: ['TRIP_UPDATE'],
+      passwordHash: studentPasswordHash,
+      role: 'student',
+      department: 'Mechanical',
+      phone: '+919876543211',
+      isActive: true,
     });
-    await rep.setPassword('Rep@123');
 
-    await Promise.all([admin.save(), staff.save(), student.save(), rep.save()]);
-
-    console.log('🚌 Creating buses...');
+    console.log('🚌 Creating fleet buses...');
     const bus1 = await Bus.create({
-      busNumber: 'BUS-001',
-      registrationNumber: 'KA01AB1234',
-      capacity: 50,
+      busNumber: 'Bus B-12',
+      registrationNumber: 'TN01AB1234',
+      capacity: 55,
       availabilityStatus: 'available',
+      isActive: true,
     });
 
-    console.log('🛣️  Creating routes...');
+    console.log('🛣️ Creating transit routes and stops...');
     const route1 = await Route.create({
-      routeName: 'Route A - City Center',
-      routeNumber: 'R-A',
+      routeName: 'Route 5 - South City',
+      routeNumber: 'R05',
       busId: bus1._id,
+      isActive: true,
       stops: [
-        { stopName: 'Main Gate', latitude: 12.9716, longitude: 77.5946, sequence: 1 },
-        { stopName: 'City Center', latitude: 12.975, longitude: 77.6, sequence: 2 },
-        { stopName: 'Campus', latitude: 12.98, longitude: 77.61, sequence: 3 },
+        { stopName: 'Central Gate', sequence: 1, latitude: 13.0827, longitude: 80.2707 },
+        { stopName: 'Tech Park Gate', sequence: 2, latitude: 13.0855, longitude: 80.2755 },
+        { stopName: 'Campus North', sequence: 3, latitude: 13.0890, longitude: 80.2800 },
       ],
     });
 
-    console.log('📋 Creating assignments...');
+    // Link route to bus cache
+    bus1.currentRouteId = route1._id;
+    await bus1.save();
+
+    console.log('📋 Assigning students and representatives...');
     await StudentBusAssignment.create({
       studentId: student._id,
       busId: bus1._id,
@@ -84,19 +114,24 @@ const seed = async () => {
     });
 
     await RepresentativeAssignment.create({
-      representativeId: rep._id,
+      representativeId: repStudent._id,
       busId: bus1._id,
       routeId: route1._id,
+      roleType: 'primary',
       assignedBy: admin._id,
       status: 'active',
     });
 
-    console.log('✅ Seed completed successfully!');
-    console.log('\n📝 Test Credentials:');
-    console.log('   Admin:  admin@college.edu / Admin@123');
-    console.log('   Staff:  staff@college.edu / Staff@123');
-    console.log('   Student: student@college.edu / Student@123');
-    console.log('   Rep:    rep@college.edu / Rep@123');
+    console.log('\n=========================================');
+    console.log('✅ Database seeded successfully!');
+    console.log('=========================================');
+    console.log('\n🔑 AVAILABLE LOGIN CREDENTIALS:');
+    console.log('   👨‍💼 Admin:      admin@college.edu  /  Admin@123');
+    console.log('   👨‍💼 Admin (alt):admin@test.com     /  Password123!');
+    console.log('   👨‍🎓 Student:    student@college.edu /  Student@123');
+    console.log('   🚌 Rep:        rep@college.edu     /  Student@123');
+    console.log('   👨‍🏫 Faculty:    staff@college.edu   /  Staff@123');
+    console.log('=========================================\n');
 
     await mongoose.connection.close();
     process.exit(0);
