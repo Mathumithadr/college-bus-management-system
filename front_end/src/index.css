@@ -1,0 +1,53 @@
+/* Global Tailwind CSS directives — must be first three lines, do not reorder */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base body styles — dark navy background matches the approved dashboard design */
+body {
+  background-color: #070d18;
+  color: #f1f5f9;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden;
+}
+
+/* Custom scrollbar styling — thin dark scrollbar for sidebar and content areas */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: #0a1222;
+}
+::-webkit-scrollbar-thumb {
+  background: #1b2b4c;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #10b981;
+}
+
+/* Leaflet map container — forces the map to fill its parent div entirely */
+.leaflet-container {
+  background-color: #080f1e !important;
+  width: 100%;
+  height: 100%;
+  border-radius: 1rem;
+}
+
+/* Leaflet tile layer dark filter — applies dark-mode tint to map tiles */
+.leaflet-tile {
+  filter: brightness(0.35) saturate(0.8) hue-rotate(185deg);
+}
+
+/* Radar pulse keyframe animation — used on the active bus marker on the map */
+@keyframes radarPulse {
+  0%   { transform: scale(0.9); opacity: 0.8; }
+  50%  { transform: scale(1.5); opacity: 0;   }
+  100% { transform: scale(0.9); opacity: 0;   }
+}
+
+/* Applied to outer glow ring around the highlighted active bus icon */
+.radar-ring {
+  animation: radarPulse 2s ease-out infinite;
+}
