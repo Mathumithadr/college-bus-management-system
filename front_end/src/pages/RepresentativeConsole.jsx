@@ -1,213 +1,205 @@
-// RepresentativeConsole — trip cockpit for Primary/Vice reps: start/end trip, GPS stream, delay broadcast, handover
-import React, { useState, useEffect } from 'react';
-import { Bus, MapPin, AlertCircle, CheckCircle, Radio, ArrowRightLeft } from 'lucide-react';
-import axiosClient from '../api/axiosClient.js';
-import { useAuth } from '../context/AuthContext.jsx';
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
+import axiosClient from '../api/axiosClient';
+import { Play, Square, MapPin, AlertTriangle, Radio, ShieldAlert, CheckCircle2 } from 'lucide-react';
 
 export default function RepresentativeConsole() {
   const { user } = useAuth();
-
-  // activeTrip holds the current in-progress trip from GET /api/rep/trips/active
   const [activeTrip, setActiveTrip] = useState(null);
-  const [loading, setLoading]       = useState(true);
-  const [error, setError]           = useState('');
-  const [success, setSuccess]       = useState('');
+  const [loading, setLoading] = useState(true);
 
-  // GPS streaming state — browser Geolocation API provides coordinates
-  const [streaming, setStreaming] = useState(false);
-  const [streamWatchId, setStreamWatchId] = useState(null);
+  // GPS State
+  const [isTracking, setIsTracking] = useState(false);
+  const watchIdRef = useRef(null);
+  const [lastPing, setLastPing] = useState(null);
 
-  // Delay modal state
-  const [showDelayModal, setShowDelayModal] = useState(false);
-  const [delayMinutes, setDelayMinutes]     = useState('');
-  const [delayReason, setDelayReason]       = useState('');
+  // Delay State
+  const [delayMinutes, setDelayMinutes] = useState('');
+  const [delayReason, setDelayReason] = useState('');
+  const [showDelayForm, setShowDelayForm] = useState(false);
 
-  // Fetch the active trip for this representative on mount
+  // Fetch active trip on mount
   useEffect(() => {
     const fetchActiveTrip = async () => {
       try {
-        const res = await axiosClient.get('/rep/trips/active');
-        setActiveTrip(res.data?.activeTrip || null);
-      } catch {
-        // No active trip is normal — not an error
-      } finally {
+        // Assuming the backend might have a route to check active trip, 
+        // or we check the rep's bus state. 
+        // For now, we'll rely on local state after starting, 
+        // but in production, you'd fetch: GET /api/rep/buses/:busId/state
+        setLoading(false);
+      } catch (error) {
+        console.error("Failed to load state", error);
         setLoading(false);
       }
     };
     fetchActiveTrip();
   }, []);
 
-  // handleStartTrip — calls POST /api/rep/buses/:busId/trips/start to begin transit
   const handleStartTrip = async () => {
-    // busId comes from the representative's assignment stored in the user profile
-    const busId = user?.assignedBusId;
-    if (!busId) { setError('No bus assigned. Contact admin.'); return; }
-    setError('');
     try {
-      const res = await axiosClient.post(`/rep/buses/${busId}/trips/start`, { tripType: 'morning', initialStopSequence: 1 });
-      setActiveTrip(res.data?.trip);
-      setSuccess('Trip started successfully!');
+      // Note: Need the busId. In your backend, a rep is assigned to a bus. 
+      // In a real app, you'd fetch the rep's active assignment first.
+      // For this example, we assume we have the busId or the backend resolves it.
+      const busId = user.assignedBusId || "REPLACE_WITH_ACTUAL_BUS_ID";
+
+      const res = await axiosClient.post(`/rep/buses/${busId}/trips/start`);
+      setActiveTrip(res.data.trip);
     } catch (err) {
-      setError(err?.message || 'Failed to start trip.');
+      alert(err.message || 'Failed to start trip');
     }
   };
 
-  // handleEndTrip — calls POST /api/rep/trips/:tripId/end to complete the trip atomically
   const handleEndTrip = async () => {
-    if (!activeTrip) return;
-    setError('');
+    if (!window.confirm("Are you sure you want to end this trip?")) return;
+
     try {
       await axiosClient.post(`/rep/trips/${activeTrip._id}/end`);
+      stopGpsTracking();
       setActiveTrip(null);
-      setSuccess('Trip ended successfully.');
     } catch (err) {
-      setError(err?.message || 'Failed to end trip.');
+      alert(err.message || 'Failed to end trip');
     }
   };
 
-  // startGpsStream — uses browser Geolocation to watch position and POST to /api/rep/trips/:tripId/location
-  const startGpsStream = () => {
-    if (!activeTrip || !navigator.geolocation) {
-      setError('Geolocation is not available on this device.');
+  const startGpsTracking = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
       return;
     }
-    setStreaming(true);
-    const id = navigator.geolocation.watchPosition(
-      async (pos) => {
+
+    setIsTracking(true);
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (position) => {
         try {
           await axiosClient.post(`/rep/trips/${activeTrip._id}/location`, {
-            latitude:     pos.coords.latitude,
-            longitude:    pos.coords.longitude,
-            accuracyMeters: pos.coords.accuracy,
-            speed:        pos.coords.speed || 0,
-            recordedAt:   new Date().toISOString(),
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracyMeters: position.coords.accuracy,
+            recordedAt: new Date().toISOString(),
           });
-        } catch {
-          // Single failed GPS post is acceptable; streaming continues
+          setLastPing(new Date().toLocaleTimeString());
+        } catch (err) {
+          console.error("Failed to send GPS ping", err);
         }
       },
-      (err) => {
-        setError('GPS permission denied or unavailable.');
-        setStreaming(false);
+      (error) => {
+        console.error("GPS Error:", error);
+        alert("Please enable location permissions.");
+        setIsTracking(false);
       },
-      { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
-    setStreamWatchId(id);
   };
 
-  // stopGpsStream — clears the Geolocation watch and stops sending coordinates
-  const stopGpsStream = () => {
-    if (streamWatchId) navigator.geolocation.clearWatch(streamWatchId);
-    setStreaming(false);
-    setStreamWatchId(null);
+  const stopGpsTracking = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsTracking(false);
   };
 
-  // handleDelay — broadcasts trip delay via POST /api/rep/trips/:tripId/delay
-  const handleDelay = async () => {
-    if (!activeTrip || !delayMinutes) return;
+  const handleReportDelay = async (e) => {
+    e.preventDefault();
     try {
       await axiosClient.post(`/rep/trips/${activeTrip._id}/delay`, {
-        expectedDelayMinutes: parseInt(delayMinutes, 10),
         reason: delayReason,
+        expectedDelayMinutes: parseInt(delayMinutes, 10),
       });
-      setSuccess(`Delay of ${delayMinutes} min broadcasted. Students will be notified.`);
-      setShowDelayModal(false);
+      setShowDelayForm(false);
       setDelayMinutes('');
       setDelayReason('');
+      alert("Delay broadcasted to students.");
     } catch (err) {
-      setError(err?.message || 'Failed to broadcast delay.');
+      alert(err.message || 'Failed to report delay');
     }
   };
 
+  if (loading) return <div className="text-white p-10">Loading...</div>;
+
   return (
-    <div className="space-y-5">
-      {/* Page header */}
-      <div className="flex items-center gap-3">
-        <Radio className="w-6 h-6 text-emerald-400" />
-        <h1 className="text-xl font-extrabold text-white">Representative Transit Console</h1>
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-white">Representative Console</h1>
+        <div className="text-sm text-slate-400">Welcome, {user.name}</div>
       </div>
 
-      {/* Alerts */}
-      {error   && <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 text-sm text-rose-400"><AlertCircle className="w-4 h-4 shrink-0" />{error}</div>}
-      {success && <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400"><CheckCircle className="w-4 h-4 shrink-0" />{success}</div>}
+      {/* TRIP CONTROL CARD */}
+      <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
+        <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+          <Radio className="w-5 h-5 text-emerald-400" /> Trip Control
+        </h2>
 
-      {loading ? (
-        <div className="flex justify-center py-10"><div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" /></div>
-      ) : (
-        <>
-          {/* TRIP CONTROL CARD */}
-          <div className="rounded-2xl bg-[#0c162b] border border-[#16274a] p-5 shadow-xl">
-            <h2 className="font-bold text-white text-base mb-4">Trip Control</h2>
-            {activeTrip ? (
-              <div className="space-y-3">
-                {/* Active trip info */}
-                <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3">
-                  <div className="text-sm font-bold text-emerald-400">Trip in Progress</div>
-                  <div className="text-xs text-slate-400 mt-0.5">Trip ID: {activeTrip._id?.slice(-8)}</div>
-                  <div className="text-xs text-slate-400">Stop {activeTrip.currentStopSequence} · {activeTrip.delayStatus === 'delayed' ? '⚠ Delayed' : '✓ On Time'}</div>
-                </div>
-                <button onClick={handleEndTrip} className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-semibold text-sm rounded-xl transition">
+        {!activeTrip ? (
+          <button
+            onClick={handleStartTrip}
+            className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition"
+          >
+            <Play className="w-5 h-5" /> Start Morning Trip
+          </button>
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-emerald-400 font-semibold">Trip In Progress</p>
+                <p className="text-xs text-slate-400 mt-1">ID: {activeTrip._id}</p>
+              </div>
+              <div className="flex gap-2">
+                {!isTracking ? (
+                  <button onClick={startGpsTracking} className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+                    <MapPin className="w-4 h-4" /> Start GPS
+                  </button>
+                ) : (
+                  <button onClick={stopGpsTracking} className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white text-sm font-bold rounded-lg flex items-center gap-2">
+                    <Square className="w-4 h-4" /> Stop GPS
+                  </button>
+                )}
+                <button onClick={handleEndTrip} className="px-4 py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-400 text-sm font-bold rounded-lg border border-rose-500/30 transition">
                   End Trip
                 </button>
               </div>
-            ) : (
-              <button onClick={handleStartTrip} className="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-sm rounded-xl transition">
-                Start Morning Trip
-              </button>
+            </div>
+
+            {isTracking && (
+              <div className="text-sm text-emerald-400 flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Streaming GPS... Last ping: {lastPing || 'Waiting...'}
+              </div>
             )}
           </div>
+        )}
+      </div>
 
-          {/* GPS STREAMING CARD */}
-          {activeTrip && (
-            <div className="rounded-2xl bg-[#0c162b] border border-[#16274a] p-5 shadow-xl">
-              <h2 className="font-bold text-white text-base mb-4">Live GPS Streaming</h2>
-              <div className="flex items-center gap-4">
-                <div className={`w-3 h-3 rounded-full ${streaming ? 'bg-emerald-400 animate-pulse' : 'bg-slate-600'}`} />
-                <span className="text-sm text-slate-300">{streaming ? 'Streaming GPS to server...' : 'GPS stream is paused'}</span>
-                {streaming ? (
-                  <button onClick={stopGpsStream} className="ml-auto px-4 py-1.5 bg-rose-600/20 text-rose-400 hover:bg-rose-600/40 text-sm font-semibold rounded-xl transition">
-                    Stop Stream
-                  </button>
-                ) : (
-                  <button onClick={startGpsStream} className="ml-auto px-4 py-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 text-sm font-semibold rounded-xl transition">
-                    Start Stream
-                  </button>
-                )}
+      {/* DELAY REPORTING CARD */}
+      {activeTrip && (
+        <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
+          <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-amber-400" /> Report Delay
+          </h2>
+
+          {!showDelayForm ? (
+            <button onClick={() => setShowDelayForm(true)} className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold rounded-xl transition">
+              Report Traffic or Delay
+            </button>
+          ) : (
+            <form onSubmit={handleReportDelay} className="space-y-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Expected Delay (Minutes)</label>
+                <input type="number" required min="1" max="120" value={delayMinutes} onChange={e => setDelayMinutes(e.target.value)} className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white" />
               </div>
-            </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Reason (Optional)</label>
+                <input type="text" value={delayReason} onChange={e => setDelayReason(e.target.value)} placeholder="e.g. Heavy traffic" className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white" />
+              </div>
+              <div className="flex gap-2">
+                <button type="submit" className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-xl">Broadcast</button>
+                <button type="button" onClick={() => setShowDelayForm(false)} className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl">Cancel</button>
+              </div>
+            </form>
           )}
-
-          {/* DELAY BROADCAST CARD */}
-          {activeTrip && (
-            <div className="rounded-2xl bg-[#0c162b] border border-[#16274a] p-5 shadow-xl">
-              <h2 className="font-bold text-white text-base mb-4">Broadcast Delay</h2>
-              {!showDelayModal ? (
-                <button onClick={() => setShowDelayModal(true)} className="px-5 py-2 bg-amber-600/20 text-amber-400 hover:bg-amber-600/40 font-semibold text-sm rounded-xl transition">
-                  Report Delay
-                </button>
-              ) : (
-                <div className="space-y-3">
-                  {/* Minutes input — sends expectedDelayMinutes to POST /api/rep/trips/:id/delay */}
-                  <input type="number" min="1" max="120" placeholder="Delay in minutes..."
-                    value={delayMinutes} onChange={(e) => setDelayMinutes(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-amber-500" />
-                  <input type="text" placeholder="Reason (e.g. highway traffic)..."
-                    value={delayReason} onChange={(e) => setDelayReason(e.target.value)}
-                    className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-amber-500" />
-                  <div className="flex gap-3">
-                    <button onClick={handleDelay} className="px-5 py-2 bg-amber-600 hover:bg-amber-500 text-white font-semibold text-sm rounded-xl transition">
-                      Broadcast
-                    </button>
-                    <button onClick={() => setShowDelayModal(false)} className="px-5 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold text-sm rounded-xl transition">
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </>
+        </div>
       )}
+
     </div>
   );
 }

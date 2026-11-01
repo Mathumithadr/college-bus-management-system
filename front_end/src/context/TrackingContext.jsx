@@ -1,102 +1,97 @@
-// TrackingContext — polls GET /api/student/bus/location every 5 seconds and shares live telemetry across all map components
+// TrackingContext — polls GET /api/student/bus/location every 30 seconds
+// and shares live telemetry across all map components
+// 
+// NOTE: Route switching to "other routes" is currently not supported
+// because the backend doesn't have a GET /api/student/routes endpoint.
+// Students can only track their assigned bus.
+
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
-import axiosClient from '../api/axiosClient.js';
-import { useAuth } from './AuthContext.jsx';
+import axiosClient from '../api/axiosClient';
+import { useAuth } from './AuthContext';
 
-// Shared context so both the map and telemetry cards re-render from the same polling source
 const TrackingContext = createContext(null);
-
-// Poll interval in milliseconds — 5 seconds matches backend GPS accumulator cadence
-const POLL_INTERVAL_MS = 5000;
+const POLL_INTERVAL_MS = 30000;   // 30 seconds, per your requirement
 
 export function TrackingProvider({ children }) {
-  // busInfo holds route, stops, and representative contact from GET /api/student/bus
-  const [busInfo, setBusInfo] = useState(null);
-
-  // liveLocation holds GPS coordinates, speed, ETA, and staleness flag from GET /api/student/bus/location
-  const [liveLocation, setLiveLocation] = useState(null);
-
-  // trackingError holds the last API error so the map can show a warning instead of crashing
-  const [trackingError, setTrackingError] = useState(null);
-
-  // isStale shows a warning badge if the last GPS ping is older than 30 seconds
-  const [isStale, setIsStale] = useState(false);
-
-  const pollTimerRef = useRef(null);
   const { user } = useAuth();
+  
+  // Static bus info (bus number, route, stops) — loaded once on mount
+  const [busInfo, setBusInfo] = useState(null);
+  
+  // Live GPS location — updated every 30s
+  const [liveLocation, setLiveLocation] = useState(null);
+  
+  // Error state if the bus fetch fails
+  const [trackingError, setTrackingError] = useState(null);
+  
+  // Whether the last GPS update is older than 120s (backend flags this)
+  const [isStale, setIsStale] = useState(false);
+  
+  // Timer reference for cleanup
+  const pollTimerRef = useRef(null);
 
-  // fetchBusInfo — loads static bus and route assignment once at mount
+  // ─── Fetch Assigned Bus Info ────────────────────────────────
+  // GET /api/student/bus → returns { bus, route, assignment }
   const fetchBusInfo = useCallback(async () => {
     try {
       const res = await axiosClient.get('/student/bus');
-      // Normalize assignment, route, and bus objects from backend envelope
-      const assignment = res.data?.assignment || res.assignment || res.data || {};
-      const route = assignment.routeId || assignment.route || {};
-      const bus = assignment.busId || assignment.bus || {};
-      setBusInfo({ ...assignment, route, bus });
+      const assignment = res.data?.assignment || res.assignment || res.data || res;
+      setBusInfo(assignment);
       setTrackingError(null);
     } catch (err) {
-      // Log but don't crash — display a friendly message
-      console.warn('[TrackingContext] Bus info lookup:', err?.message);
-      setTrackingError(err?.message || 'Bus assignment currently unavailable');
+      setTrackingError(err?.message || 'Bus assignment unavailable');
     }
   }, []);
 
-  // fetchLiveLocation — polls the backend GPS stream and updates map marker position
+  // ─── Fetch Live Location ────────────────────────────────────
+  // GET /api/student/bus/location → returns { latitude, longitude, isStale, ... }
   const fetchLiveLocation = useCallback(async () => {
     try {
       const res = await axiosClient.get('/student/bus/location');
-      // Extract location and status from backend payload
       const locData = res.data?.location || res.location || (res.data?.latitude ? res.data : null);
-      const status = res.data?.locationStatus || res.locationStatus || 'UNAVAILABLE';
-      const staleFlag = res.data?.isStale ?? res.isStale ?? false;
-
-      // Only set liveLocation if valid coordinate data exists
-      if (locData && typeof locData.latitude === 'number' && typeof locData.longitude === 'number') {
-        setLiveLocation({ ...locData, locationStatus: status });
-      } else {
-        setLiveLocation(null);
+      
+      if (locData && typeof locData.latitude === 'number') {
+        setLiveLocation(locData);
       }
-
-      setIsStale(staleFlag);
-      setTrackingError(null);
+      
+      // Backend returns isStale flag based on 120s threshold
+      setIsStale(res.data?.isStale ?? res.isStale ?? false);
     } catch (err) {
-      // A single failed poll is normal (e.g. no active trip running)
-      console.warn('[TrackingContext] Location poll note:', err?.message);
+      // Silent — this happens normally when no active trip is running
     }
   }, []);
 
-  // Start polling on mount for students/representatives, stop when unmounting or on logout
+  // ─── Poll Setup ─────────────────────────────────────────────
+  // Only poll for students (including reps — they're students + permissions)
   useEffect(() => {
-    // Only students and representatives have assigned buses and access to /student/* endpoints
-    const canPoll = user && (user.role === 'student' || user.permissions?.includes('representative'));
+    const canPoll = user && user.role === 'student';
     if (!canPoll) return;
 
-    // Load bus assignment data once
     fetchBusInfo();
-
-    // Start live location polling cycle
     fetchLiveLocation();
     pollTimerRef.current = setInterval(fetchLiveLocation, POLL_INTERVAL_MS);
 
     return () => {
-      // Clear interval timer to prevent memory leaks when navigating away
-      if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
-      }
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
     };
   }, [user, fetchBusInfo, fetchLiveLocation]);
 
   return (
-    <TrackingContext.Provider value={{ busInfo, liveLocation, trackingError, isStale, refetch: fetchBusInfo }}>
+    <TrackingContext.Provider value={{
+      busInfo,
+      liveLocation,
+      trackingError,
+      isStale,
+      refetch: fetchBusInfo,
+    }}>
       {children}
     </TrackingContext.Provider>
   );
 }
 
-// useTracking — hook for map and card components to access live telemetry
+// Hook that any component uses to access tracking state
 export function useTracking() {
   const ctx = useContext(TrackingContext);
-  if (!ctx) throw new Error('[useTracking] Must be used inside <TrackingProvider>');
+  if (!ctx) throw new Error('useTracking must be used inside <TrackingProvider>');
   return ctx;
 }
