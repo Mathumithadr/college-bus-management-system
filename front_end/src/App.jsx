@@ -15,10 +15,11 @@ import RepresentativeConsole from './pages/RepresentativeConsole.jsx';
 import AttendancePage from './pages/AttendancePage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
+import StaffDashboard from './pages/StaffDashboard.jsx';
 import AdminPage from './pages/AdminPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 
-// Role-aware home redirector — directs admins to /admin and students to /dashboard
+// Role-aware home redirector — directs users to their respective landing page
 function RoleHomeRedirect() {
   const { user } = useAuth();
 
@@ -29,9 +30,9 @@ function RoleHomeRedirect() {
     return <Navigate to="/admin" replace />;
   }
 
-  // Staff goes to attendance review
+  // Staff goes to staff dashboard
   if (user.role === 'staff') {
-    return <Navigate to="/attendance" replace />;
+    return <Navigate to="/staff/dashboard" replace />;
   }
 
   // Representative goes to the transit console
@@ -65,10 +66,9 @@ export default function App() {
                 </ProtectedRoute>
               }
             >
-              {/* Default root routes user to their appropriate role home */}
               <Route index element={<RoleHomeRedirect />} />
 
-              {/* Student-only */}
+              {/* Student routes */}
               <Route
                 path="/dashboard"
                 element={
@@ -77,14 +77,39 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/tracking"
+                element={
+                  <ProtectedRoute requiredRole="student">
+                    <BusTrackingPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/reports"
+                element={
+                  <ProtectedRoute requiredRole="student">
+                    <ReportsPage />
+                  </ProtectedRoute>
+                }
+              />
 
-              {/* Shared with different endpoints */}
-              <Route path="/tracking" element={<BusTrackingPage />} />
+              {/* Staff routes */}
+              <Route
+                path="/staff/dashboard"
+                element={
+                  <ProtectedRoute requiredRole="staff">
+                    <StaffDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
+
+              {/* Shared routes (available to all roles) */}
               <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/reports" element={<ReportsPage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
 
-              {/* Rep-only */}
+              {/* Rep routes */}
               <Route
                 path="/rep/transit"
                 element={
@@ -94,7 +119,7 @@ export default function App() {
                 }
               />
 
-              {/* Admin-only */}
+              {/* Admin routes */}
               <Route
                 path="/admin"
                 element={
