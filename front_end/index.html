@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Favicon using bus emoji for quick identification in browser tab -->
+    <link rel="icon" type="image/svg+xml" href="/bus-icon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Leaflet CSS must be loaded globally before any map component renders -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <title>College Bus Management</title>
+  </head>
+  <body>
+    <!-- Root div where React mounts the entire application -->
+    <div id="root"></div>
+    <!-- Vite injects bundled JS here at build time -->
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>
