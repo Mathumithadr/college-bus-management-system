@@ -10,6 +10,7 @@ import AppLayout from './components/layout/AppLayout.jsx';
 // Page imports — each page maps to one role's primary view
 import LoginPage from './pages/LoginPage.jsx';
 import StudentDashboard from './pages/StudentDashboard.jsx';
+import BusTrackingPage from './pages/BusTrackingPage.jsx';
 import RepresentativeConsole from './pages/RepresentativeConsole.jsx';
 import AttendancePage from './pages/AttendancePage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
@@ -20,9 +21,25 @@ import NotFoundPage from './pages/NotFoundPage.jsx';
 // Role-aware home redirector — directs admins to /admin and students to /dashboard
 function RoleHomeRedirect() {
   const { user } = useAuth();
-  if (user?.role === 'admin') {
+
+  if (!user) return <Navigate to="/login" replace />;
+
+  // Admin goes to admin panel
+  if (user.role === 'admin') {
     return <Navigate to="/admin" replace />;
   }
+
+  // Staff goes to attendance review
+  if (user.role === 'staff') {
+    return <Navigate to="/attendance" replace />;
+  }
+
+  // Representative goes to the transit console
+  if (user.permissions?.includes('representative')) {
+    return <Navigate to="/rep/transit" replace />;
+  }
+
+  // Regular students go to the dashboard
   return <Navigate to="/dashboard" replace />;
 }
 
@@ -50,9 +67,24 @@ export default function App() {
             >
               {/* Default root routes user to their appropriate role home */}
               <Route index element={<RoleHomeRedirect />} />
-              <Route path="/dashboard" element={<StudentDashboard />} />
 
-              {/* Rep console — only accessible if user has an active RepresentativeAssignment */}
+              {/* Student-only */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute requiredRole="student">
+                    <StudentDashboard />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Shared with different endpoints */}
+              <Route path="/tracking" element={<BusTrackingPage />} />
+              <Route path="/attendance" element={<AttendancePage />} />
+              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/announcements" element={<AnnouncementsPage />} />
+
+              {/* Rep-only */}
               <Route
                 path="/rep/transit"
                 element={
@@ -62,12 +94,7 @@ export default function App() {
                 }
               />
 
-              {/* Shared pages — available to authenticated users */}
-              <Route path="/attendance" element={<AttendancePage />} />
-              <Route path="/reports" element={<ReportsPage />} />
-              <Route path="/announcements" element={<AnnouncementsPage />} />
-
-              {/* Admin-only fleet management portal */}
+              {/* Admin-only */}
               <Route
                 path="/admin"
                 element={

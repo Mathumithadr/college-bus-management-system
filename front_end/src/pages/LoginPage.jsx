@@ -1,154 +1,117 @@
-// LoginPage — public page where students, staff, and admins enter credentials to receive a JWT
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bus, AlertCircle } from 'lucide-react';
-import { useAuth } from '../context/AuthContext.jsx';
+import { useAuth } from '../context/AuthContext';
+import { Bus, Lock, Mail, AlertCircle, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Form field state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-
-  // submitting disables the button while the POST /api/auth/login request is in flight
-  const [submitting, setSubmitting] = useState(false);
-
-  // error holds the backend error message (e.g. INVALID_CREDENTIALS, ACCOUNT_LOCKED)
-  const [error, setError] = useState('');
-
-  // handleSubmit — calls the AuthContext login function which POSTs to /api/auth/login
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!email || !password) {
-      setError('Please enter both email and password.');
-      return;
-    }
-    setSubmitting(true);
     setError('');
+    setLoading(true);
+
     try {
-      // login() stores the JWT and sets the user in AuthContext
       const user = await login(email, password);
 
-      // Route admin users to the admin panel, all others to the student dashboard
+      // Role-based redirect based on backend user data
       if (user.role === 'admin') {
-        navigate('/admin', { replace: true });
+        navigate('/admin');
+      } else if (user.role === 'staff') {
+        navigate('/staff'); // We will build this
+      } else if (user.permissions?.includes('representative')) {
+        navigate('/rep/transit');
       } else {
-        navigate('/dashboard', { replace: true });
+        navigate('/dashboard');
       }
     } catch (err) {
-      // Map backend error codes to human-friendly messages
-      const code = err?.code;
-      if (code === 'INVALID_CREDENTIALS') setError('Incorrect email or password.');
-      else if (code === 'ACCOUNT_LOCKED') setError('Account locked — too many failed attempts. Try again in 15 minutes.');
-      else setError(err?.message || 'Login failed. Please try again.');
+      // Handle backend error formats (e.g., INVALID_CREDENTIALS)
+      setError(err.message || 'Failed to login. Please check your credentials.');
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    // Full-page dark background with centered login card
-    <div className="min-h-screen bg-[#070d18] flex items-center justify-center px-4">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen bg-[#070d18] flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-[#0c162b] border border-[#16274a] rounded-2xl p-8 shadow-2xl">
 
-        {/* App branding shown above the login form */}
-        <div className="flex flex-col items-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-amber-400 flex items-center justify-center text-slate-950 shadow-xl shadow-amber-400/25 mb-4">
-            <Bus className="w-9 h-9" />
+        {/* Header */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 bg-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-amber-400/20">
+            <Bus className="w-8 h-8 text-slate-900" />
           </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight">College Bus Management</h1>
-          <p className="text-sm text-slate-400 mt-1">Sign in to your account</p>
+          <p className="text-sm text-slate-400 mt-2">Sign in to your account</p>
         </div>
 
-        {/* Login card with subtle border and dark card background */}
-        <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-8 shadow-2xl">
-          <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Error Alert */}
+        {error && (
+          <div className="mb-6 flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 text-sm text-rose-400">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
 
-            {/* Email field — bound to POST /api/auth/login body.email */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Email address
-              </label>
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Email address</label>
+            <div className="relative">
+              <Mail className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="email"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@college.edu"
-                className="w-full px-4 py-2.5 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                autoComplete="email"
-                disabled={submitting}
+                className="w-full pl-10 pr-4 py-2.5 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
+          </div>
 
-            {/* Password field — bound to POST /api/auth/login body.password */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Password
-              </label>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Password</label>
+            <div className="relative">
+              <Lock className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="password"
+                required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-4 py-2.5 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 transition"
-                autoComplete="current-password"
-                disabled={submitting}
+                className="w-full pl-10 pr-4 py-2.5 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
+          </div>
 
-            {/* Error alert box — shown when backend returns an error code */}
-            {error && (
-              <div className="flex items-start gap-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 text-sm text-rose-400">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                <span>{error}</span>
-              </div>
-            )}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full flex items-center justify-center gap-2 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold text-sm rounded-xl transition shadow-lg shadow-emerald-600/20"
+          >
+            {loading ? 'Signing in...' : 'Sign In'}
+            {!loading && <ArrowRight className="w-4 h-4" />}
+          </button>
+        </form>
 
-            {/* Submit button — shows spinner while request is in flight */}
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-not-allowed text-white font-semibold text-sm rounded-xl transition shadow-lg shadow-emerald-600/25"
-            >
-              {submitting ? 'Signing in...' : 'Sign in'}
-            </button>
-          </form>
-
-          {/* Quick Demo Credentials Buttons for Development & Testing */}
-          <div className="mt-6 pt-5 border-t border-[#1b2b4c]">
-            <p className="text-xs text-slate-400 font-semibold mb-2.5">Quick Demo Logins (Click to autofill & sign in):</p>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => { setEmail('admin@college.edu'); setPassword('Admin@123'); }}
-                className="px-2 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-emerald-500/30 rounded-lg text-xs text-emerald-400 font-medium transition"
-              >
-                👨‍💼 Admin
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('student@college.edu'); setPassword('Student@123'); }}
-                className="px-2 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-blue-500/30 rounded-lg text-xs text-blue-400 font-medium transition"
-              >
-                👨‍🎓 Student
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('rep@college.edu'); setPassword('Student@123'); }}
-                className="px-2 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-amber-500/30 rounded-lg text-xs text-amber-400 font-medium transition"
-              >
-                🚌 Rep
-              </button>
-            </div>
+        {/* Quick Demo Credentials (For testing, remove in prod) */}
+        <div className="mt-6 pt-6 border-t border-[#1b2b4c]">
+          <p className="text-xs text-slate-500 text-center mb-3">Quick Demo Logins</p>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => { setEmail('admin@college.edu'); setPassword('Admin@123'); }} className="px-3 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 transition">Admin</button>
+            <button onClick={() => { setEmail('student@college.edu'); setPassword('Student@123'); }} className="px-3 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 transition">Student</button>
+            <button onClick={() => { setEmail('rep@college.edu'); setPassword('Rep@123'); }} className="px-3 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 transition">Rep</button>
+            <button onClick={() => { setEmail('staff@college.edu'); setPassword('Staff@123'); }} className="px-3 py-1.5 bg-[#0e192f] hover:bg-slate-800 border border-slate-700 rounded-lg text-xs text-slate-300 transition">Staff</button>
           </div>
         </div>
 
-        {/* Footer note — informs users that accounts are provisioned by admin */}
-        <p className="text-center text-xs text-slate-500 mt-6">
-          Account access is provisioned by the college transport office.
-        </p>
       </div>
     </div>
   );

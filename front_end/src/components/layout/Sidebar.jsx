@@ -1,65 +1,62 @@
-// Sidebar — left vertical navigation with glowing emerald active pill and all 9 menu items
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
-import {
-  LayoutDashboard, Bus, MapPin, TrendingUp,
-  Megaphone, CalendarCheck, FileText, User, Settings
-} from 'lucide-react';
-import { useAuth } from '../../context/AuthContext.jsx';
-
-// navItems defines each sidebar link — path must match App.jsx route definitions
-const baseNavItems = [
-  { label: 'Dashboard',           path: '/dashboard',     icon: LayoutDashboard },
-  { label: 'My Bus',              path: '/my-bus',        icon: Bus },
-  { label: 'Live Tracking',       path: '/tracking',      icon: MapPin },
-  { label: 'Route Progress',      path: '/route',         icon: TrendingUp },
-  { label: 'Announcements',       path: '/announcements', icon: Megaphone },
-  { label: 'Attendance Requests', path: '/attendance',    icon: CalendarCheck },
-  { label: 'Reports',             path: '/reports',       icon: FileText },
-  { label: 'Profile',             path: '/profile',       icon: User },
-  { label: 'Settings',            path: '/settings',      icon: Settings },
-];
+import { NavLink } from 'react-router-dom';
+import { LayoutDashboard, CalendarCheck, FileText, Megaphone, Shield, Radio } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 export default function Sidebar() {
   const { user } = useAuth();
+  const isRep = user?.permissions?.includes('representative');
 
-  // If user is admin or representative, inject their control portal link
-  const navItems = [...baseNavItems];
-  if (user?.role === 'admin') {
-    navItems.push({ label: 'Admin Portal', path: '/admin', icon: LayoutDashboard });
-  } else if (user?.permissions?.includes('representative')) {
-    navItems.push({ label: 'Rep Console', path: '/rep/transit', icon: Bus });
-  }
+  const navItems = [
+    // Only regular students see the live dashboard
+    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['student'], hideForRep: true },
+    // Everyone can see attendance (students request, staff reviews)
+    { label: 'Attendance', path: '/attendance', icon: CalendarCheck, roles: ['student', 'staff', 'admin'] },
+    // Students and admins see reports
+    { label: 'Reports', path: '/reports', icon: FileText, roles: ['student', 'admin'] },
+    // Everyone sees announcements
+    { label: 'Announcements', path: '/announcements', icon: Megaphone, roles: ['student', 'staff', 'admin'] },
+    // Only reps see the console
+    { label: 'Rep Console', path: '/rep/transit', icon: Radio, roles: ['student'], requiresRep: true },
+    // Only admins see the admin panel
+    { label: 'Admin Panel', path: '/admin', icon: Shield, roles: ['admin'] },
+  ];
+
+  const visible = navItems.filter((item) => {
+    // If it requires a Rep, only show to Reps
+    if (item.requiresRep && !isRep) return false;
+    // Hide dashboard from Reps (they have their own console)
+    if (item.hideForRep && isRep) return false;
+    
+    // Otherwise check the role
+    return item.roles.includes(user?.role);
+  });
 
   return (
-    // Fixed-width sidebar — never scrolls horizontally, content scrolls vertically if needed
-    <aside className="w-60 bg-[#0a1222] border-r border-[#14233e] flex flex-col py-5 px-3 shrink-0 overflow-y-auto">
-
-      {/* Spacer so nav links start below the header height */}
+    <aside className="w-64 bg-[#0c162b] border-r border-[#16274a] h-screen p-4 flex flex-col">
+      <div className="text-white font-bold text-lg mb-6 px-2 flex items-center gap-2">
+        🚌 College Bus
+      </div>
       <nav className="space-y-1 flex-1">
-        {navItems.map(({ label, path, icon: Icon }) => (
-          <NavLink
-            key={path}
-            to={path}
+        {visible.map(({ label, path, icon: Icon }) => (
+          <NavLink key={path} to={path}
             className={({ isActive }) =>
-              // Active link gets glowing emerald pill; inactive links use subtle hover state
               isActive
-                ? 'flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-emerald-600/90 text-white font-semibold text-sm shadow-lg shadow-emerald-600/25 transition'
-                : 'flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-400 hover:text-white hover:bg-[#121f3a] font-medium text-sm transition'
-            }
-          >
-            {/* Each icon matches the design from the approved dashboard mockup */}
-            <Icon className="w-4 h-4 shrink-0" />
+                ? 'flex items-center gap-3 px-3 py-2 rounded-xl bg-emerald-600/90 text-white font-semibold text-sm shadow-lg shadow-emerald-600/25'
+                : 'flex items-center gap-3 px-3 py-2 rounded-xl text-slate-400 hover:text-white hover:bg-[#121f3a] text-sm transition'
+            }>
+            <Icon className="w-4 h-4" />
             <span>{label}</span>
           </NavLink>
         ))}
       </nav>
-
-      {/* Bottom section shows the logged-in user's name and role above a separator */}
+      
+      {/* User profile snippet at the bottom */}
       {user && (
         <div className="mt-4 pt-4 border-t border-[#14233e]">
           <div className="px-3.5 text-xs text-slate-400 font-medium truncate">{user.name}</div>
-          <div className="px-3.5 text-[10px] text-slate-500 capitalize mt-0.5">{user.role}</div>
+          <div className="px-3.5 text-[10px] text-slate-500 capitalize mt-0.5">
+            {isRep ? 'Representative' : user.role}
+          </div>
         </div>
       )}
     </aside>
