@@ -28,7 +28,12 @@ export default function ProtectedRoute({ children, requiredRole }) {
 
   // Student-only route: non-students redirected to their default page
   if (requiredRole === 'student' && user.role !== 'student') {
-    return <Navigate to={user.role === 'admin' ? '/admin' : '/attendance'} replace />;
+    return <Navigate to={user.role === 'admin' ? '/admin' : user.role === 'staff' ? '/staff/dashboard' : '/attendance'} replace />;
+  }
+
+  // Staff-only route: non-staff redirected to their default page
+  if (requiredRole === 'staff' && user.role !== 'staff') {
+    return <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} replace />;
   }
 
   // Representative access is granted via user.permissions array from RepresentativeAssignment

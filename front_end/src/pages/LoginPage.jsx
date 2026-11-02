@@ -24,7 +24,7 @@ export default function LoginPage() {
       if (user.role === 'admin') {
         navigate('/admin');
       } else if (user.role === 'staff') {
-        navigate('/staff'); // We will build this
+        navigate('/staff/dashboard');
       } else if (user.permissions?.includes('representative')) {
         navigate('/rep/transit');
       } else {
