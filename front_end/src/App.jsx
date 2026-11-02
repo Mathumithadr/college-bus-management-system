@@ -16,8 +16,11 @@ import AttendancePage from './pages/AttendancePage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import StaffDashboard from './pages/StaffDashboard.jsx';
-import AdminPage from './pages/AdminPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+
+import AdminDashboard from './pages/admin/AdminDashboard.jsx';
+import FleetPage from './pages/admin/FleetPage';
+import AssignmentsPage from './pages/admin/AssignmentsPage';
 
 // Role-aware home redirector — directs users to their respective landing page
 function RoleHomeRedirect() {
@@ -105,26 +108,64 @@ export default function App() {
               />
               <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
 
-              {/* Shared routes (available to all roles) */}
+              {/* Shared routes */}
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
-
-              {/* Rep routes */}
-              <Route
-                path="/rep/transit"
-                element={
-                  <ProtectedRoute requiredRole="representative">
-                    <RepresentativeConsole />
-                  </ProtectedRoute>
-                }
-              />
 
               {/* Admin routes */}
               <Route
                 path="/admin"
                 element={
                   <ProtectedRoute requiredRole="admin">
-                    <AdminPage />
+                    <AdminDashboard />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/fleet"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <FleetPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="/admin/assignments"
+                element={<ProtectedRoute requiredRole="admin">
+                  <AssignmentsPage />
+                </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/reports"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <div className="text-white">Reports Admin Page Coming Next</div>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/announcements"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <div className="text-white">Announcements Admin Page Coming Next</div>
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/audit"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <div className="text-white">Audit Logs Coming Next</div>
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* Rep & placeholder routes */}
+              <Route
+                path="/rep/transit"
+                element={
+                  <ProtectedRoute requiredRole="representative">
+                    <RepresentativeConsole />
                   </ProtectedRoute>
                 }
               />

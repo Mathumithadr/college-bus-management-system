@@ -27,6 +27,7 @@ import {
   listAdminAnnouncements,
   updateAdminAnnouncement,
   deleteAdminAnnouncement,
+  bulkAssignStudents,
 } from './admin.service.js';
 import {
   terminateTripByAdmin,
@@ -35,6 +36,7 @@ import {
 import {
   overrideRepresentativeHandover,
 } from '../tracking/handover.service.js';
+
 
 // ==================== BUSES ====================
 
@@ -202,6 +204,23 @@ export const getAssignmentsController = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// Controller for bulk student assignment
+export const bulkAssignStudentsController = async (req, res, next) => {
+  try {
+    const { assignments } = req.body;
+    
+    const result = await bulkAssignStudents({ 
+      assignments, 
+      adminId: req.user._id, 
+      ip: req.ip, 
+      correlationId: req.correlationId 
+    });
+    
+    return sendSuccess(res, result, 201);
+  } catch (err) {
+    next(err);
+  }
+};
 // ==================== TRIP ACTIONS ====================
 
 // Handle administrative trip termination
@@ -329,3 +348,4 @@ export const deleteAnnouncementController = async (req, res, next) => {
     return sendSuccess(res, result);
   } catch (err) { next(err); }
 };
+

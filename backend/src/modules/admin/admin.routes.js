@@ -24,10 +24,27 @@ import {
   getAuditLogsController,
   // Announcements
   createAnnouncementController, getAnnouncementsController, updateAnnouncementController, deleteAnnouncementController,
+  bulkAssignStudentsController,
 } from './admin.controller.js';
+
+
 
 const router = Router();
 const adminAuth = [authenticate, requireRole('admin')];
+
+// POST /api/admin/assignments/bulk
+router.post(
+  '/assignments/bulk',
+  [
+    ...adminAuth,
+    body('assignments').isArray({ min: 1 }).withMessage('Assignments array is required'),
+    body('assignments.*.studentId').isMongoId().withMessage('Valid studentId required'),
+    body('assignments.*.busId').isMongoId().withMessage('Valid busId required'),
+    body('assignments.*.routeId').isMongoId().withMessage('Valid routeId required'),
+    handleValidation,
+  ],
+  bulkAssignStudentsController
+);
 
 // --- Buses ---
 router.post('/buses', [...adminAuth, body('busNumber').notEmpty(), body('registrationNumber').notEmpty(), body('capacity').isInt({ min: 1, max: 100 }), handleValidation], createBusController);

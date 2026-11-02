@@ -19,6 +19,59 @@ import {
   validationError,
 } from '../../utils/errors.js';
 
+// Bulk assign students using an optimized database operation
+export const bulkAssignStudents = async ({ assignments, adminId, ip, correlationId }) => {
+  // 1. First, deactivate any existing ACTIVE assignments for these students
+  const studentIds = assignments.map(a => a.studentId);
+
+  await StudentBusAssignment.updateMany(
+    { studentId: { $in: studentIds }, status: 'active' },
+    { $set: { status: 'inactive' } }
+  );
+
+  // 2. Prepare the new assignment documents
+  const newAssignments = assignments.map(a => ({
+    studentId: a.studentId,
+    busId: a.busId,
+    routeId: a.routeId,
+    assignedBy: adminId,
+    assignedAt: new Date(),
+    status: 'active',
+  }));
+
+  // 3. Insert them all at once
+  let inserted = [];
+  let errors = [];
+
+  try {
+    inserted = await StudentBusAssignment.insertMany(newAssignments, { ordered: false });
+  } catch (err) {
+    // If insertMany fails partially, MongoDB throws an error but still inserts the valid ones
+    if (err.insertedDocs) {
+      inserted = err.insertedDocs;
+    }
+    if (err.writeErrors) {
+      errors = err.writeErrors.map(e => e.errmsg);
+    }
+  }
+
+  // 4. Log the bulk action in AuditLogs
+  await writeAuditLog({
+    actorId: adminId,
+    action: 'STUDENT_BULK_ASSIGNED',
+    resourceType: 'StudentBusAssignment',
+    details: { count: inserted.length, failed: errors.length },
+    ipAddress: ip,
+    correlationId,
+  });
+
+  return {
+    success: true,
+    insertedCount: inserted.length,
+    errors
+  };
+};
+
 export const createBus = async ({ busNumber, registrationNumber, capacity, availabilityStatus, adminId, ip, correlationId }) => {
   const existing = await Bus.findOne({ $or: [{ busNumber }, { registrationNumber }] });
   if (existing) throw duplicateRequestError('A bus with this bus number or registration number already exists');
