@@ -372,3 +372,35 @@ export const importStudentsController = async (req, res, next) => {
     return sendSuccess(res, result, 201);
   } catch (err) { next(err); }
 };
+import { createStaffUser, listAllStaff, toggleStaffStatus } from './admin.service.js';
+
+export const createStaffController = async (req, res, next) => {
+  try {
+    const result = await createStaffUser({
+      ...req.body,
+      adminId: req.user._id,
+      ip: req.ip,
+      correlationId: req.correlationId,
+    });
+    return sendSuccess(res, result, 201);
+  } catch (err) { next(err); }
+};
+
+export const getStaffListController = async (req, res, next) => {
+  try {
+    const { page, limit, skip } = parsePagination(req.query);
+    const { staff, total } = await listAllStaff({ skip, limit });
+    return sendPaginated(res, staff, buildPagination(page, limit, total));
+  } catch (err) { next(err); }
+};
+
+export const toggleStaffStatusController = async (req, res, next) => {
+  try {
+    const result = await toggleStaffStatus(req.params.id, {
+      adminId: req.user._id,
+      ip: req.ip,
+      correlationId: req.correlationId,
+    });
+    return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};

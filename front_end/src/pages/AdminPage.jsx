@@ -12,7 +12,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const TABS = ['Stops', 'Routes', 'Fleet', 'Assignments', 'Schedule', 'CSV Import'];
+const TABS = ['Stops', 'Routes', 'Fleet', 'Assignments', 'Staff', 'Schedule', 'CSV Import'];
 
 // Helper component to handle map clicks
 function LocationMarker({ position, setPosition }) {
@@ -85,8 +85,18 @@ export default function AdminPage() {
   const [scheduleRouteId, setScheduleRouteId] = useState('');
   const [scheduleBusId, setScheduleBusId] = useState('');
 
+  // ==================== STAFF STATE ====================
+  const [staffList, setStaffList] = useState([]);
+  const [newStaffName, setNewStaffName] = useState('');
+  const [newStaffEmail, setNewStaffEmail] = useState('');
+  const [newStaffPassword, setNewStaffPassword] = useState('');
+  const [newStaffDepartment, setNewStaffDepartment] = useState('CSE');
+  const [newStaffPhone, setNewStaffPhone] = useState('');
+  const [staffLoading, setStaffLoading] = useState(false);
+
   // ==================== CSV STATE ====================
   const [csvFile, setCsvFile] = useState(null);
+
   // Fetch initial data
   useEffect(() => {
     const fetchData = async () => {
@@ -117,12 +127,20 @@ export default function AdminPage() {
         setRoutes(routesRes.data?.routes || routesRes.routes || routesRes.data || []);
       } catch (err) { console.error('Failed to fetch routes', err); }
 
-      // 5. Fetch Assignments (Only if on that tab)
+      // 5. Fetch Assignments
       if (activeTab === 'Assignments' || activeTab === 'Fleet') {
         try {
           const assignRes = await axiosClient.get('/admin/assignments?type=students');
           setAssignments(assignRes.data?.assignments || assignRes.assignments || []);
         } catch (err) { console.error('Failed to fetch assignments', err); }
+      }
+
+      // 6. Fetch Staff
+      if (activeTab === 'Staff') {
+        try {
+          const staffRes = await axiosClient.get('/admin/staff');
+          setStaffList(staffRes.data || []);
+        } catch (err) { console.error('Failed to fetch staff', err); }
       }
 
       setLoading(false);
@@ -338,7 +356,7 @@ export default function AdminPage() {
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <Shield className="w-6 h-6 text-emerald-400" /> Admin Control Panel
         </h1>
-        <p className="text-sm text-slate-400 mt-1">Manage stops, routes, buses, and schedules.</p>
+        <p className="text-sm text-slate-400 mt-1">Manage stops, routes, buses, staff, and schedules.</p>
       </div>
 
       {/* Tabs */}
@@ -547,11 +565,7 @@ export default function AdminPage() {
       {/* ==================== ASSIGNMENTS TAB ==================== */}
       {!loading && activeTab === 'Assignments' && (
         <div className="space-y-6">
-
-          {/* Top Row: The Two Forms */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            {/* Left: Assign Student Form */}
             <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl space-y-4">
               <h2 className="text-lg font-bold text-white mb-2">Assign Student to Bus</h2>
               <form onSubmit={handleAssignStudent} className="space-y-4">
@@ -593,7 +607,6 @@ export default function AdminPage() {
               </form>
             </div>
 
-            {/* Right: Assign Representative Form */}
             <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl space-y-4">
               <h2 className="text-lg font-bold text-white mb-2">Assign Representative</h2>
               <form onSubmit={handleAssignRep} className="space-y-4">
@@ -634,20 +647,15 @@ export default function AdminPage() {
             </div>
           </div>
 
-          {/* Bottom Row: Currently Assigned Students List (Full Width) */}
           <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl space-y-4">
              <h2 className="text-lg font-bold text-white mb-2">Currently Assigned Students</h2>
-
              {assignments.length === 0 && (
                 <p className="text-sm text-slate-500 text-center py-4">No students assigned yet.</p>
              )}
-
-             {/* Group by bus */}
              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                {buses.map(bus => {
                   const studentsOnBus = assignments.filter(a => a.busId?._id === bus._id || a.busId === bus._id);
                   if (studentsOnBus.length === 0) return null;
-
                   return (
                     <div key={bus._id} className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl p-4 flex flex-col h-full">
                       <div className="flex items-center justify-between mb-3 border-b border-[#1b2b4c] pb-2">
@@ -669,7 +677,169 @@ export default function AdminPage() {
                })}
              </div>
           </div>
+        </div>
+      )}
 
+      {/* ==================== STAFF TAB ==================== */}
+      {!loading && activeTab === 'Staff' && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 className="text-lg font-bold text-white mb-2">Add Instructor (Staff)</h2>
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setStaffLoading(true);
+                setError(''); setSuccessMsg('');
+                try {
+                  await axiosClient.post('/admin/staff', {
+                    name: newStaffName,
+                    email: newStaffEmail,
+                    password: newStaffPassword,
+                    department: newStaffDepartment,
+                    phone: newStaffPhone,
+                  });
+                  setSuccessMsg('Staff member created successfully!');
+                  setNewStaffName('');
+                  setNewStaffEmail('');
+                  setNewStaffPassword('');
+                  setNewStaffPhone('');
+                  const res = await axiosClient.get('/admin/staff');
+                  setStaffList(res.data || []);
+                } catch (err) {
+                  setError(err.message || 'Failed to create staff');
+                } finally {
+                  setStaffLoading(false);
+                }
+              }}
+              className="space-y-4"
+              autoComplete="off"
+            >
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Full Name</label>
+                <input
+                  type="text"
+                  required
+                  autoComplete="off"
+                  value={newStaffName}
+                  onChange={(e) => setNewStaffName(e.target.value)}
+                  placeholder="e.g. Dr. Arun Kumar"
+                  className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Email</label>
+                <input
+                  type="email"
+                  required
+                  autoComplete="new-email"
+                  value={newStaffEmail}
+                  onChange={(e) => setNewStaffEmail(e.target.value)}
+                  placeholder="arun@kct.ac.in"
+                  className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Password</label>
+                <input
+                  type="password"
+                  required
+                  minLength={8}
+                  autoComplete="new-password"
+                  value={newStaffPassword}
+                  onChange={(e) => setNewStaffPassword(e.target.value)}
+                  placeholder="Min 8 characters"
+                  className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Department</label>
+                  <select
+                    value={newStaffDepartment}
+                    onChange={(e) => setNewStaffDepartment(e.target.value)}
+                    className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm"
+                  >
+                    <option value="CSE">CSE</option>
+                    <option value="IT">IT</option>
+                    <option value="AIDS">AIDS</option>
+                    <option value="ECE">ECE</option>
+                    <option value="MECH">MECH</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs text-slate-400 mb-1">Phone</label>
+                  <input
+                    type="tel"
+                    required
+                    minLength={10}
+                    maxLength={10}
+                    pattern="[0-9]{10}"
+                    title="Please enter exactly 10 digits"
+                    autoComplete="off"
+                    value={newStaffPhone}
+                    onChange={(e) => {
+                      const cleaned = e.target.value.replace(/\D/g, '');
+                      setNewStaffPhone(cleaned);
+                    }}
+                    placeholder="10-digit number"
+                    className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="submit"
+                disabled={staffLoading}
+                className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-sm disabled:opacity-50"
+              >
+                {staffLoading ? 'Creating...' : 'Create Staff Account'}
+              </button>
+            </form>
+          </div>
+
+          <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl space-y-4">
+            <h2 className="text-lg font-bold text-white mb-2">All Staff Members ({staffList.length})</h2>
+            {staffList.length === 0 && (
+              <p className="text-sm text-slate-500 text-center py-4">No staff accounts created yet.</p>
+            )}
+            <div className="space-y-2 max-h-[500px] overflow-y-auto">
+              {staffList.map(staff => (
+                <div key={staff._id} className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl p-4 flex justify-between items-center">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-white truncate">{staff.name}</p>
+                    <p className="text-xs text-slate-400 truncate">{staff.email}</p>
+                    <p className="text-xs text-slate-500 mt-1">{staff.department || 'No dept'} • {staff.phone || 'No phone'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className={`text-[10px] px-2 py-1 rounded-full border whitespace-nowrap ${
+                      staff.isActive
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : 'bg-rose-500/20 text-rose-400 border-rose-500/30'
+                    }`}>
+                      {staff.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                    <button
+                      onClick={async () => {
+                        try {
+                          await axiosClient.put(`/admin/staff/${staff._id}/toggle`);
+                          const res = await axiosClient.get('/admin/staff');
+                          setStaffList(res.data || []);
+                        } catch (err) {
+                          setError(err.message || 'Failed to toggle status');
+                        }
+                      }}
+                      className="text-xs text-amber-400 hover:text-amber-300 px-2 whitespace-nowrap"
+                    >
+                      {staff.isActive ? 'Deactivate' : 'Activate'}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
