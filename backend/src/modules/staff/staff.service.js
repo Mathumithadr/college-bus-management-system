@@ -70,3 +70,13 @@ export const reviewAttendance = async ({ requestId, reviewerId, isAdmin, action,
 
   return { attendance: request };
 };
+
+// Fetch a list of all active staff members for student dropdowns
+export const listStaffMembers = async () => {
+  const User = (await import('../../models/User.js')).default;
+  // Only select name, email, and department for security
+  const staff = await User.find({ role: 'staff', isActive: true })
+    .select('name email department')
+    .sort({ name: 1 });
+  return { staff };
+};

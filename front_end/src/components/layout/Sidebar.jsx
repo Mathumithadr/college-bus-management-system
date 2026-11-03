@@ -8,7 +8,7 @@ export default function Sidebar() {
 
   const navItems = [
     // Only regular students see the live dashboard
-    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['student'], hideForRep: true },
+    { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, roles: ['student'], },
     // Everyone can see attendance (students request, staff reviews)
     { label: 'Attendance', path: '/attendance', icon: CalendarCheck, roles: ['student', 'staff', 'admin'] },
     // Students and admins see reports
@@ -24,9 +24,7 @@ export default function Sidebar() {
   const visible = navItems.filter((item) => {
     // If it requires a Rep, only show to Reps
     if (item.requiresRep && !isRep) return false;
-    // Hide dashboard from Reps (they have their own console)
-    if (item.hideForRep && isRep) return false;
-    
+
     // Otherwise check the role
     return item.roles.includes(user?.role);
   });
@@ -49,7 +47,7 @@ export default function Sidebar() {
           </NavLink>
         ))}
       </nav>
-      
+
       {/* User profile snippet at the bottom */}
       {user && (
         <div className="mt-4 pt-4 border-t border-[#14233e]">

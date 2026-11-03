@@ -20,14 +20,14 @@ export default function BusTrackingPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      
+
       {/* ===== PAGE HEADER ===== */}
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <MapPin className="w-6 h-6 text-emerald-400" /> Bus Tracking
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {currentBus?.busNumber && currentRoute?.routeNumber 
+          {currentBus?.busNumber && currentRoute?.routeNumber
             ? `Tracking ${currentBus.busNumber} on ${currentRoute.routeNumber} - ${currentRoute.routeName}`
             : 'Loading your bus details...'}
         </p>
@@ -55,56 +55,35 @@ export default function BusTrackingPage() {
       <LiveMapCard busInfo={currentRoute} liveLocation={liveLocation} />
 
       {/* ===== TEXTUAL TIMELINE ===== */}
+      {/* Route Progress Section */}
       <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
         <h2 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
           <MapPin className="w-5 h-5 text-emerald-400" /> Route Progress
         </h2>
-        
-        {!currentRoute?.stops?.length ? (
+
+        {!currentRoute?.stops || currentRoute.stops.length === 0 ? (
           <p className="text-sm text-slate-500">No stops configured for this route.</p>
         ) : (
           <div className="relative pl-6 space-y-6">
-            {/* Vertical connection line */}
             <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-slate-700" />
-
             {currentRoute.stops.map((stop, index) => {
-              // Determine stop state based on currentStopSequence
               const isPassed = stop.sequence < currentSeq;
               const isNear = stop.sequence === currentSeq + 1;
-              const isUpcoming = stop.sequence > currentSeq + 1;
+              const isFirst = stop.sequence === 1;
 
               return (
                 <div key={stop._id || index} className="relative">
-                  {/* Node circle */}
-                  <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 flex items-center justify-center bg-[#070d18] ${
-                    isPassed 
-                      ? 'border-slate-600' 
-                      : isNear 
-                        ? 'border-emerald-400 shadow-lg shadow-emerald-500/40' 
-                        : 'border-slate-700'
-                  }`}>
-                    <div className={`w-2 h-2 rounded-full ${
-                      isPassed 
-                        ? 'bg-slate-600' 
-                        : isNear 
-                          ? 'bg-emerald-400 animate-pulse' 
-                          : 'bg-slate-700'
-                    }`} />
-                  </div>
-                  
-                  {/* Stop name + status */}
-                  <div>
-                    <h3 className={`text-sm font-bold ${
-                      isPassed 
-                        ? 'text-slate-500' 
-                        : isNear 
-                          ? 'text-emerald-400' 
-                          : 'text-slate-300'
+                  <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 flex items-center justify-center bg-[#070d18] ${isPassed ? 'border-slate-600' : isNear || (currentSeq === 0 && isFirst) ? 'border-emerald-400 shadow-lg shadow-emerald-500/40' : 'border-slate-700'
                     }`}>
-                      {stop.stopName}
+                    <div className={`w-2 h-2 rounded-full ${isPassed ? 'bg-slate-600' : isNear || (currentSeq === 0 && isFirst) ? 'bg-emerald-400 animate-pulse' : 'bg-slate-700'
+                      }`} />
+                  </div>
+                  <div>
+                    <h3 className={`text-sm font-bold ${isPassed ? 'text-slate-500' : isNear || (currentSeq === 0 && isFirst) ? 'text-emerald-400' : 'text-slate-300'}`}>
+                      {stop.name}
                     </h3>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      {isPassed ? '✓ Passed' : isNear ? '→ Next Stop' : 'Upcoming'}
+                      {isPassed ? '✓ Passed' : isNear || (currentSeq === 0 && isFirst) ? '→ Next Stop' : 'Upcoming'}
                     </p>
                   </div>
                 </div>
@@ -113,7 +92,6 @@ export default function BusTrackingPage() {
           </div>
         )}
       </div>
-
       {/* ===== LAST UPDATE TIME ===== */}
       {liveLocation?.recordedAt && (
         <div className="flex items-center justify-center gap-2 text-xs text-slate-500">

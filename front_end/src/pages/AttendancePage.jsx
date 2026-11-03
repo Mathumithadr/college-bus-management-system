@@ -11,11 +11,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axiosClient from '../api/axiosClient';
 import { useAuth } from '../context/AuthContext';
 import { useTracking } from '../context/TrackingContext';
-import { 
-  CalendarCheck, 
-  AlertCircle, 
-  CheckCircle, 
-  XCircle, 
+import {
+  CalendarCheck,
+  AlertCircle,
+  CheckCircle,
+  XCircle,
   ShieldCheck,
   Users,          // Icon for faculty dropdown
   Loader2         // Spinner for faculty loading state
@@ -39,6 +39,10 @@ export default function AttendancePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+
+  const [staffList, setStaffList] = useState([]);
+  const [staffSearch, setStaffSearch] = useState('');
+  const [showStaffDropdown, setShowStaffDropdown] = useState(false);
 
   // ─── Faculty Dropdown State ─────────────────────────────────
   // facultyList holds all available faculty for the dropdown.
@@ -66,7 +70,7 @@ export default function AttendancePage() {
   const fetchFacultyList = useCallback(async () => {
     setFacultyLoading(true);
     setFacultyError('');
-    
+
     // Attempt 1: Dedicated faculty-list endpoint
     try {
       const res = await axiosClient.get('/staff/faculty-list');
@@ -79,7 +83,7 @@ export default function AttendancePage() {
     } catch (err) {
       console.warn('[Attendance] /staff/faculty-list not available');
     }
-    
+
     // Attempt 2: Admin users endpoint (may 403 for students)
     try {
       const res = await axiosClient.get('/admin/users?role=staff&limit=100');
@@ -96,7 +100,7 @@ export default function AttendancePage() {
     } catch (err) {
       console.warn('[Attendance] /admin/users not accessible');
     }
-    
+
     // Both failed — enable manual entry mode
     setFacultyList([]);
     setFacultyError('Faculty list not available. Please enter the Faculty ID manually.');
@@ -105,10 +109,16 @@ export default function AttendancePage() {
 
   // Load faculty list once on mount (only for students — no need for staff)
   useEffect(() => {
-    if (!isStaff) {
-      fetchFacultyList();
-    }
-  }, [isStaff, fetchFacultyList]);
+    const fetchStaff = async () => {
+      try {
+        const res = await axiosClient.get('/staff/list');
+        setStaffList(res.data?.staff || res.staff || []);
+      } catch (err) {
+        console.error("Failed to load staff list", err);
+      }
+    };
+    if (!isStaff) fetchStaff();
+  }, [isStaff]);
 
   // ─── Fetch Attendance Requests ──────────────────────────────
   // Students: GET /api/student/attendance (own requests)
@@ -138,7 +148,7 @@ export default function AttendancePage() {
     setSubmitting(true);
     setError('');
     setSuccessMsg('');
-    
+
     try {
       await axiosClient.post('/student/attendance', {
         date: form.date,
@@ -148,7 +158,7 @@ export default function AttendancePage() {
         reason: form.reason,
         busId: busInfo?.busId?._id || null,
       });
-      
+
       setSuccessMsg('Request submitted! The faculty will review it shortly.');
       // Reset form but keep classHour for convenience
       setForm({
@@ -199,15 +209,15 @@ export default function AttendancePage() {
   // ─── Render ─────────────────────────────────────────────────
   return (
     <div className="max-w-4xl mx-auto space-y-6">
-      
+
       {/* ===== PAGE HEADER ===== */}
       <div>
         <h1 className="text-2xl font-bold text-white flex items-center gap-2">
           <CalendarCheck className="w-6 h-6 text-emerald-400" /> Attendance Requests
         </h1>
         <p className="text-sm text-slate-400 mt-1">
-          {isStaff 
-            ? 'Review pending attendance requests from students.' 
+          {isStaff
+            ? 'Review pending attendance requests from students.'
             : 'Request exemptions for classes missed due to bus delays.'}
         </p>
       </div>
@@ -218,7 +228,7 @@ export default function AttendancePage() {
           <AlertCircle className="w-4 h-4 shrink-0" />{error}
         </div>
       )}
-      
+
       {/* ===== SUCCESS ALERT ===== */}
       {successMsg && (
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400">
@@ -238,15 +248,15 @@ export default function AttendancePage() {
       {!isStaff && (
         <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
           <h2 className="font-bold text-white mb-4">Submit New Request</h2>
-          
+
           <form onSubmit={handleSubmit} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            
+
             {/* Row 1: Date */}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Date</label>
-              <input 
-                type="date" 
-                required 
+              <input
+                type="date"
+                required
                 value={form.date}
                 onChange={(e) => setForm({ ...form, date: e.target.value })}
                 disabled={submitting}
@@ -257,13 +267,13 @@ export default function AttendancePage() {
             {/* Row 1: Class Hour */}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Class Hour</label>
-              <select 
+              <select
                 value={form.classHour}
                 onChange={(e) => setForm({ ...form, classHour: e.target.value })}
                 disabled={submitting}
                 className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
               >
-                {[1,2,3,4,5,6,7,8].map(h => (
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(h => (
                   <option key={h} value={h}>Hour {h}</option>
                 ))}
               </select>
@@ -272,10 +282,10 @@ export default function AttendancePage() {
             {/* Row 2: Course */}
             <div>
               <label className="block text-xs text-slate-400 mb-1">Course Code / Name</label>
-              <input 
-                type="text" 
-                required 
-                placeholder="e.g. CS101 - Data Structures" 
+              <input
+                type="text"
+                required
+                placeholder="e.g. CS101 - Data Structures"
                 value={form.course}
                 onChange={(e) => setForm({ ...form, course: e.target.value })}
                 disabled={submitting}
@@ -284,48 +294,63 @@ export default function AttendancePage() {
             </div>
 
             {/* Faculty Dropdown OR Manual Input (fallback) */}
-            <div>
+            <div className="relative">
               <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
-                <Users className="w-3 h-3" />
-                Faculty Member
-                {facultyLoading && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
+                <Users className="w-3 h-3" /> Faculty Member
               </label>
-              
-              {facultyList.length > 0 ? (
-                // Dropdown when faculty list is available
-                <select 
-                  required
-                  value={form.facultyId}
-                  onChange={(e) => setForm({ ...form, facultyId: e.target.value })}
-                  disabled={submitting}
-                  className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">Select a faculty member</option>
-                  {facultyList.map((f) => (
-                    <option key={f._id} value={f._id}>
-                      {f.name}{f.department ? ` (${f.department})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                // Manual input fallback when no list available
-                <input 
-                  type="text"
-                  required
-                  placeholder="Paste faculty ObjectId (e.g. 65f1a2b3...)"
-                  value={form.facultyId}
-                  onChange={(e) => setForm({ ...form, facultyId: e.target.value })}
-                  disabled={submitting || facultyLoading}
-                  className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
-                />
+
+              {/* The Search Input */}
+              <input
+                type="text"
+                placeholder="Search by faculty name or email..."
+                value={staffSearch}
+                onChange={(e) => {
+                  setStaffSearch(e.target.value);
+                  setShowStaffDropdown(true);
+                  setForm({ ...form, facultyId: '' }); // Reset ID if they type again
+                }}
+                onFocus={() => setShowStaffDropdown(true)}
+                className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm focus:border-emerald-500 focus:outline-none"
+              />
+
+              {/* The Dropdown */}
+              {showStaffDropdown && staffSearch.length > 0 && (
+                <ul className="absolute z-50 w-full mt-1 bg-[#0e192f] border border-[#1b2b4c] rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                  {staffList
+                    .filter(s =>
+                      s.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+                      s.email.toLowerCase().includes(staffSearch.toLowerCase())
+                    )
+                    .map(s => (
+                      <li
+                        key={s._id}
+                        onClick={() => {
+                          setForm({ ...form, facultyId: s._id });
+                          setStaffSearch(`${s.name} (${s.department || 'Staff'})`);
+                          setShowStaffDropdown(false);
+                        }}
+                        className="px-4 py-2 text-sm text-slate-300 hover:bg-[#16274a] cursor-pointer border-b border-[#1b2b4c] last:border-0"
+                      >
+                        <div className="font-bold text-white">{s.name}</div>
+                        <div className="text-xs text-slate-500">{s.email}</div>
+                      </li>
+                    ))}
+                  {staffList.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase())).length === 0 && (
+                    <li className="px-4 py-2 text-sm text-slate-500 italic">No staff found...</li>
+                  )}
+                </ul>
+              )}
+
+              {/* Show selected staff below to confirm */}
+              {form.facultyId && (
+                <p className="text-xs text-emerald-400 mt-1">✅ Selected ID: {form.facultyId}</p>
               )}
             </div>
-
             {/* Row 3: Reason */}
             <div className="sm:col-span-2">
               <label className="block text-xs text-slate-400 mb-1">Reason for Delay</label>
-              <textarea 
-                required 
+              <textarea
+                required
                 rows={3}
                 placeholder="e.g. Bus was delayed 20 minutes due to heavy traffic on the highway..."
                 value={form.reason}
@@ -337,8 +362,8 @@ export default function AttendancePage() {
 
             {/* Submit */}
             <div className="sm:col-span-2">
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 disabled={submitting || facultyLoading}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold text-sm rounded-xl transition"
               >
@@ -354,7 +379,7 @@ export default function AttendancePage() {
         <h2 className="font-bold text-white mb-4">
           {isStaff ? 'Review Queue' : 'My Requests'}
         </h2>
-        
+
         {loading ? (
           <div className="flex justify-center py-8">
             <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
@@ -364,19 +389,19 @@ export default function AttendancePage() {
         ) : (
           <div className="space-y-3">
             {requests.map((req) => (
-              <div 
-                key={req._id} 
+              <div
+                key={req._id}
                 className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-4"
               >
                 <div className="flex items-start justify-between gap-4">
-                  
+
                   {/* Left: Request details */}
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <h3 className="text-sm font-semibold text-white">
                         {req.course} - Hour {req.classHour}
                       </h3>
-                      
+
                       {/* Delay Verified badge (set by backend when bus delay ≥15min) */}
                       {req.delayVerified && (
                         <span className="flex items-center gap-1 text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
@@ -384,18 +409,18 @@ export default function AttendancePage() {
                         </span>
                       )}
                     </div>
-                    
+
                     <div className="text-xs text-slate-400">
                       {new Date(req.date).toLocaleDateString()} · {req.reason}
                     </div>
-                    
+
                     {/* Faculty name (populated by backend) */}
                     {req.facultyId?.name && (
                       <div className="text-xs text-slate-500 mt-1">
                         Faculty: {req.facultyId.name}
                       </div>
                     )}
-                    
+
                     {/* Faculty review remarks (shown after review) */}
                     {req.reviewRemarks && (
                       <div className="text-xs text-slate-500 mt-1 italic">
@@ -403,34 +428,34 @@ export default function AttendancePage() {
                       </div>
                     )}
                   </div>
-                  
+
                   {/* Right: Status + actions */}
                   <div className="flex items-center gap-3 shrink-0">
                     <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${STATUS_STYLES[req.status] || STATUS_STYLES.pending}`}>
                       {req.status}
                     </span>
-                    
+
                     {/* Student: Cancel button (only for pending requests) */}
                     {!isStaff && req.status === 'pending' && (
-                      <button 
+                      <button
                         onClick={() => handleCancel(req._id)}
                         className="text-xs text-rose-400 hover:text-rose-300 transition"
                       >
                         Cancel
                       </button>
                     )}
-                    
+
                     {/* Staff: Approve/Reject buttons */}
                     {isStaff && req.status === 'pending' && (
                       <div className="flex gap-1">
-                        <button 
+                        <button
                           onClick={() => handleReview(req._id, 'approve')}
                           className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 rounded-lg transition"
                           title="Approve"
                         >
                           <CheckCircle className="w-4 h-4" />
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleReview(req._id, 'reject')}
                           className="p-1.5 bg-rose-600/20 text-rose-400 hover:bg-rose-600/40 rounded-lg transition"
                           title="Reject"

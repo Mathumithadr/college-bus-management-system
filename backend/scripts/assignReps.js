@@ -32,6 +32,15 @@ const assignReps = async () => {
     const routes = await Route.find().populate('busId');
 
     for (const route of routes) {
+      // Inside the for (const route of routes) loop:
+      const existingRep = await RepresentativeAssignment.findOne({
+        busId: route.busId._id,
+        status: 'active'
+      });
+      if (existingRep) {
+        console.log(`⏭️ Bus ${route.busId.busNumber} already has a rep. Skipping.`);
+        continue;
+      }
       if (!route.stops || route.stops.length === 0) {
         console.log(`⚠️ Route ${route.routeName} has no stops. Skipping.`);
         continue;
