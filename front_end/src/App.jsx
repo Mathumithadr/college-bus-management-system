@@ -16,8 +16,16 @@ import AttendancePage from './pages/AttendancePage.jsx';
 import ReportsPage from './pages/ReportsPage.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import StaffDashboard from './pages/StaffDashboard.jsx';
-import AdminPage from './pages/AdminPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+
+// Admin Page Imports
+import AdminDashboard from './pages/admin/AdminDashboard.jsx';
+import FleetPage from './pages/admin/FleetPage.jsx';
+import AssignmentsPage from './pages/admin/AssignmentsPage.jsx';
+// Note: We will uncomment these as we build them next
+// import StopsPage from './pages/admin/StopsPage.jsx';
+// import SchedulePage from './pages/admin/SchedulePage.jsx';
+// import AdminReportsPage from './pages/admin/AdminReportsPage.jsx';
 
 // Role-aware home redirector — directs users to their respective landing page
 function RoleHomeRedirect() {
@@ -68,7 +76,9 @@ export default function App() {
             >
               <Route index element={<RoleHomeRedirect />} />
 
-              {/* Student routes */}
+              {/* ======================================================== */}
+              {/* STUDENT ROUTES */}
+              {/* ======================================================== */}
               <Route
                 path="/dashboard"
                 element={
@@ -94,7 +104,9 @@ export default function App() {
                 }
               />
 
-              {/* Staff routes */}
+              {/* ======================================================== */}
+              {/* STAFF ROUTES */}
+              {/* ======================================================== */}
               <Route
                 path="/staff/dashboard"
                 element={
@@ -105,11 +117,15 @@ export default function App() {
               />
               <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
 
-              {/* Shared routes (available to all roles) */}
+              {/* ======================================================== */}
+              {/* SHARED ROUTES (Available to all roles) */}
+              {/* ======================================================== */}
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
 
-              {/* Rep routes */}
+              {/* ======================================================== */}
+              {/* REPRESENTATIVE ROUTES */}
+              {/* ======================================================== */}
               <Route
                 path="/rep/transit"
                 element={
@@ -119,15 +135,41 @@ export default function App() {
                 }
               />
 
-              {/* Admin routes */}
+              {/* ======================================================== */}
+              {/* ADMIN ROUTES */}
+              {/* ======================================================== */}
               <Route
                 path="/admin"
                 element={
                   <ProtectedRoute requiredRole="admin">
-                    <AdminPage />
+                    <AdminDashboard />
                   </ProtectedRoute>
                 }
               />
+              <Route
+                path="/admin/fleet"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <FleetPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin/assignments"
+                element={
+                  <ProtectedRoute requiredRole="admin">
+                    <AssignmentsPage />
+                  </ProtectedRoute>
+                }
+              />
+              
+              {/* Placeholder for upcoming Admin pages */}
+              {/* 
+              <Route path="/admin/stops" element={<ProtectedRoute requiredRole="admin"><StopsPage /></ProtectedRoute>} />
+              <Route path="/admin/schedule" element={<ProtectedRoute requiredRole="admin"><SchedulePage /></ProtectedRoute>} />
+              <Route path="/admin/reports" element={<ProtectedRoute requiredRole="admin"><AdminReportsPage /></ProtectedRoute>} />
+              */}
+
             </Route>
 
             {/* Catch-all for unknown URLs */}

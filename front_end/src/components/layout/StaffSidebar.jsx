@@ -1,28 +1,12 @@
-// StaffSidebar — Navigation for faculty/staff members.
-// Staff can:
-// 1. Review attendance requests from students
-// 2. Monitor live bus trips (verify student claims)
-// 3. See transport announcements
-//
-// Staff CANNOT:
-// - Create reports (that's a student action)
-// - Manage buses/routes (that's admin)
-// - Start/end trips (that's the representative)
-
 import { NavLink } from 'react-router-dom';
-import { 
-  LayoutDashboard, 
-  CalendarCheck, 
-  Bus, 
-  Megaphone 
-} from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, Megaphone } from 'lucide-react';
+// ^ Removed Bus icon since "Live Trips" isn't built yet
 
 export default function StaffSidebar() {
   const navItems = [
-    { label: 'Dashboard',      path: '/staff/dashboard', icon: LayoutDashboard },
-    { label: 'Attendance Review', path: '/attendance',   icon: CalendarCheck },
-    { label: 'Live Trips',     path: '/staff/trips',     icon: Bus },
-    { label: 'Announcements',  path: '/announcements',   icon: Megaphone },
+    { label: 'Dashboard', path: '/staff/dashboard', icon: LayoutDashboard },
+    { label: 'Attendance Review', path: '/attendance', icon: CalendarCheck },
+    { label: 'Announcements', path: '/announcements', icon: Megaphone },
   ];
 
   return (
@@ -30,11 +14,11 @@ export default function StaffSidebar() {
       <div className="text-white font-bold text-lg mb-6 px-2 flex items-center gap-2">
         🎓 Staff Portal
       </div>
-      
+
       <nav className="space-y-1 flex-1">
         {navItems.map(({ label, path, icon: Icon }) => (
-          <NavLink 
-            key={path} 
+          <NavLink
+            key={path}
             to={path}
             className={({ isActive }) =>
               isActive
