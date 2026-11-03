@@ -7,6 +7,7 @@ import {
   listAllStops,
   activateSchedule,
   importStudentsFromCSV,
+  listLateBuses,
   createBus,
   listBuses,
   getBusById,
@@ -401,6 +402,14 @@ export const toggleStaffStatusController = async (req, res, next) => {
       ip: req.ip,
       correlationId: req.correlationId,
     });
+    return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};
+
+// ==================== LATE BUSES ====================
+export const getLateBusesController = async (req, res, next) => {
+  try {
+    const result = await listLateBuses();
     return sendSuccess(res, result);
   } catch (err) { next(err); }
 };

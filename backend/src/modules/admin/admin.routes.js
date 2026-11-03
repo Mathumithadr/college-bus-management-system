@@ -6,10 +6,12 @@ import { handleValidation } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/role.js';
 import multer from 'multer';
+
 import {
   createStopController,
   getStopsController,
   activateScheduleController,
+
   importStudentsController,
   // Buses
   createBusController, getBusesController, getBusController, updateBusController, deleteBusController,
@@ -28,7 +30,7 @@ import {
   // Audit logs
   getAuditLogsController,
   // Announcements
-  createAnnouncementController, getAnnouncementsController, updateAnnouncementController, deleteAnnouncementController,
+  createAnnouncementController, getAnnouncementsController, updateAnnouncementController, deleteAnnouncementController, getLateBusesController,
 } from './admin.controller.js';
 
 const router = Router();
@@ -93,6 +95,7 @@ router.post('/schedules/activate', [...adminAuth, body('date').isISO8601(), body
 
 // --- CSV Import ---
 router.post('/students/import', [...adminAuth, upload.single('file')], importStudentsController);
+router.get('/late-buses', adminAuth, getLateBusesController);
 
 import { 
   createStaffController, 

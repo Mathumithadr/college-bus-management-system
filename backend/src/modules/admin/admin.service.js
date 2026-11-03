@@ -638,6 +638,21 @@ export const toggleStaffStatus = async (userId, { adminId, ip, correlationId }) 
     ipAddress: ip,
     correlationId,
   });
-
   return { user: user.toObject() };
+};
+
+// ==================== LATE BUSES ====================
+export const listLateBuses = async () => {
+  const Trip = (await import('../../models/Trip.js')).default;
+
+  const lateBuses = await Trip.find({
+    delayStatus: 'delayed',
+    tripStatus: 'in_progress'
+  })
+    .populate('busId', 'busNumber')
+    .populate('routeId', 'routeName routeNumber')
+    .populate('activeRepresentativeId', 'name email')
+    .sort({ startTime: -1 });
+
+  return { lateBuses };
 };

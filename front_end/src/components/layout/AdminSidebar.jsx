@@ -1,12 +1,12 @@
 // AdminSidebar — Navigation for administrators.
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Bus, Users } from 'lucide-react';
+import { LayoutDashboard, Clock, Megaphone } from 'lucide-react';
 
 export default function AdminSidebar() {
   const navItems = [
     { label: 'Admin Dashboard', path: '/admin', icon: LayoutDashboard },
-    { label: 'Fleet & Routes', path: '/admin/fleet', icon: Bus },
-    { label: 'Assignments', path: '/admin/assignments', icon: Users },
+    { label: 'Late Buses', path: '/admin/late-buses', icon: Clock },
+    { label: 'Announcements', path: '/admin/announcements', icon: Megaphone },
   ];
 
   return (

@@ -7,7 +7,7 @@ import ProtectedRoute from './components/common/ProtectedRoute.jsx';
 import ErrorBoundary from './components/common/ErrorBoundary.jsx';
 import AppLayout from './components/layout/AppLayout.jsx';
 
-// Page imports — each page maps to one role's primary view
+// Page imports
 import LoginPage from './pages/LoginPage.jsx';
 import StudentDashboard from './pages/StudentDashboard.jsx';
 import BusTrackingPage from './pages/BusTrackingPage.jsx';
@@ -17,49 +17,33 @@ import ReportsPage from './pages/ReportsPage.jsx';
 import AnnouncementsPage from './pages/AnnouncementsPage.jsx';
 import StaffDashboard from './pages/StaffDashboard.jsx';
 import AdminPage from './pages/AdminPage.jsx';
+import AdminLateBusesPage from './pages/admin/AdminLateBusesPage.jsx';
+import AdminAnnouncementsPage from './pages/admin/AdminAnnouncementsPage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 
-// Role-aware home redirector — directs users to their respective landing page
+// Role-aware home redirector
 function RoleHomeRedirect() {
   const { user } = useAuth();
-
   if (!user) return <Navigate to="/login" replace />;
-
-  // Admin goes to admin panel
-  if (user.role === 'admin') {
-    return <Navigate to="/admin" replace />;
-  }
-
-  // Staff goes to staff dashboard
-  if (user.role === 'staff') {
-    return <Navigate to="/staff/dashboard" replace />;
-  }
-
-  // Representative goes to the transit console
-  if (user.permissions?.includes('representative')) {
-    return <Navigate to="/rep/transit" replace />;
-  }
-
-  // Regular students go to the dashboard
+  if (user.role === 'admin') return <Navigate to="/admin" replace />;
+  if (user.role === 'staff') return <Navigate to="/staff/dashboard" replace />;
+  if (user.permissions?.includes('representative')) return <Navigate to="/rep/transit" replace />;
   return <Navigate to="/dashboard" replace />;
 }
 
 export default function App() {
   return (
-    // Global ErrorBoundary catches any rendering errors and prevents blank screens
     <ErrorBoundary>
-      {/* AuthProvider wraps everything so any component can access the current user session */}
       <AuthProvider>
         <BrowserRouter>
           <Routes>
-            {/* Public route — no token required */}
+            {/* Public route */}
             <Route path="/login" element={<LoginPage />} />
 
-            {/* Protected routes — token must be valid; role checked per route */}
+            {/* Protected routes */}
             <Route
               element={
                 <ProtectedRoute>
-                  {/* TrackingProvider starts/stops live bus location polling for students */}
                   <TrackingProvider>
                     <AppLayout />
                   </TrackingProvider>
@@ -69,68 +53,41 @@ export default function App() {
               <Route index element={<RoleHomeRedirect />} />
 
               {/* Student routes */}
-              <Route
-                path="/dashboard"
-                element={
-                  <ProtectedRoute requiredRole="student">
-                    <StudentDashboard />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/tracking"
-                element={
-                  <ProtectedRoute requiredRole="student">
-                    <BusTrackingPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/reports"
-                element={
-                  <ProtectedRoute requiredRole="student">
-                    <ReportsPage />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/dashboard" element={<ProtectedRoute requiredRole="student"><StudentDashboard /></ProtectedRoute>} />
+              <Route path="/tracking" element={<ProtectedRoute requiredRole="student"><BusTrackingPage /></ProtectedRoute>} />
+              <Route path="/reports" element={<ProtectedRoute requiredRole="student"><ReportsPage /></ProtectedRoute>} />
 
               {/* Staff routes */}
-              <Route
-                path="/staff/dashboard"
-                element={
-                  <ProtectedRoute requiredRole="staff">
-                    <StaffDashboard />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/staff/dashboard" element={<ProtectedRoute requiredRole="staff"><StaffDashboard /></ProtectedRoute>} />
               <Route path="/staff" element={<Navigate to="/staff/dashboard" replace />} />
 
-              {/* Shared routes (available to all roles) */}
+              {/* Shared routes */}
               <Route path="/attendance" element={<AttendancePage />} />
               <Route path="/announcements" element={<AnnouncementsPage />} />
 
               {/* Rep routes */}
-              <Route
-                path="/rep/transit"
-                element={
-                  <ProtectedRoute requiredRole="representative">
-                    <RepresentativeConsole />
-                  </ProtectedRoute>
-                }
-              />
+              <Route path="/rep/transit" element={<ProtectedRoute requiredRole="representative"><RepresentativeConsole /></ProtectedRoute>} />
 
-              {/* Admin routes */}
-              <Route
-                path="/admin"
-                element={
-                  <ProtectedRoute requiredRole="admin">
-                    <AdminPage />
-                  </ProtectedRoute>
-                }
-              />
+              {/* ======================================================== */}
+              {/* ADMIN ROUTES                                             */}
+              {/* ======================================================== */}
+
+              {/* Main Admin Panel (all tabs inside) */}
+              <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
+
+              {/* Separate Admin pages */}
+              <Route path="/admin/late-buses" element={<ProtectedRoute requiredRole="admin"><AdminLateBusesPage /></ProtectedRoute>} />
+              <Route path="/admin/announcements" element={<ProtectedRoute requiredRole="admin"><AdminAnnouncementsPage /></ProtectedRoute>} />
+
+              {/* Legacy redirects — old URLs still work, now point to /admin */}
+              <Route path="/admin/fleet" element={<Navigate to="/admin" replace />} />
+              <Route path="/admin/assignments" element={<Navigate to="/admin" replace />} />
+              <Route path="/admin/stops" element={<Navigate to="/admin" replace />} />
+              <Route path="/admin/schedule" element={<Navigate to="/admin" replace />} />
+              <Route path="/admin/reports" element={<Navigate to="/admin" replace />} />
             </Route>
 
-            {/* Catch-all for unknown URLs */}
+            {/* Catch-all */}
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </BrowserRouter>
