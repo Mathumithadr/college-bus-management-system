@@ -13,12 +13,32 @@ import { REPORT, DELAY } from '../../config/constants.js';
 import { notFoundError, duplicateRequestError, stateConflictError } from '../../utils/errors.js';
 
 // Return the student's active bus assignment with populated bus and route
+// Return the student's active bus assignment with populated bus, route, and reps
 export const getStudentAssignedBus = async (studentId) => {
   const assignment = await StudentBusAssignment
     .findOne({ studentId, status: 'active' })
-    .populate('busId routeId');
+    .populate('busId')
+    .populate({
+      path: 'routeId',
+      populate: { path: 'stops', select: 'name latitude longitude sequence' }
+    })
+    .populate('boardingStopId');
+
   if (!assignment) throw notFoundError('Active bus assignment for student');
-  return { assignment };
+
+  // Fetch the active representatives for this bus
+  const RepresentativeAssignment = (await import('../../models/RepresentativeAssignment.js')).default;
+  const reps = await RepresentativeAssignment.find({
+    busId: assignment.busId._id,
+    status: 'active'
+  }).populate('representativeId', 'name phone email');
+
+  return {
+    assignment: {
+      ...assignment.toObject(),
+      representatives: reps
+    }
+  };
 };
 
 // Return the live location of the student's assigned bus

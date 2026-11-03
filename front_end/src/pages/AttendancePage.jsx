@@ -1,20 +1,5 @@
 // AttendancePage — Student-facing page for requesting attendance exemptions
 // when a bus is delayed, plus staff-facing review queue.
-//
-// Features:
-// 1. Students submit a request with course, faculty, and reason
-// 2. Faculty dropdown is fetched from backend (auto-populated)
-// 3. Requests show delay verification badge if the backend confirmed a delay
-// 4. Staff can approve/reject pending requests
-// 5. Staff can filter by status (Pending, Approved, Rejected)
-//
-// Backend Endpoints used:
-// - GET /api/student/attendance
-// - POST /api/student/attendance
-// - PUT /api/student/attendance/:id/cancel
-// - GET /api/staff/attendance
-// - PUT /api/staff/attendance/:id/review
-// - GET /api/staff/faculty-list (may or may not exist)
 
 import React, { useState, useEffect, useCallback } from 'react';
 import axiosClient from '../api/axiosClient';
@@ -49,15 +34,13 @@ export default function AttendancePage() {
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  // ─── Filter State (Staff only) ─────────────────────────────
-  // Tracks which status filter the staff has selected.
-  // Backend endpoint GET /api/staff/attendance?status=<status> supports this.
-  const [filterStatus, setFilterStatus] = useState('pending');
+  // ─── Staff Search State (Your NEW Feature) ──────────────────
+  const [staffList, setStaffList] = useState([]);
+  const [staffSearch, setStaffSearch] = useState('');
+  const [showStaffDropdown, setShowStaffDropdown] = useState(false);
 
-  // ─── Faculty Dropdown State (Students only) ─────────────────
-  const [facultyList, setFacultyList] = useState([]);
-  const [facultyLoading, setFacultyLoading] = useState(true);
-  const [facultyError, setFacultyError] = useState('');
+  // ─── Filter State (Teammate's Feature) ──────────────────────
+  const [filterStatus, setFilterStatus] = useState('pending');
 
   // ─── Form State (Students only) ─────────────────────────────
   const [form, setForm] = useState({
@@ -69,54 +52,20 @@ export default function AttendancePage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // ─── Fetch Faculty List ─────────────────────────────────────
-  const fetchFacultyList = useCallback(async () => {
-    setFacultyLoading(true);
-    setFacultyError('');
-
-    try {
-      const res = await axiosClient.get('/staff/faculty-list');
-      const list = res.data || res || [];
-      if (list.length > 0) {
-        setFacultyList(list);
-        setFacultyLoading(false);
-        return;
-      }
-    } catch (err) {
-      console.warn('[Attendance] /staff/faculty-list not available');
-    }
-
-    try {
-      const res = await axiosClient.get('/admin/users?role=staff&limit=100');
-      const list = res.data || res.users || res || [];
-      if (list.length > 0) {
-        setFacultyList(
-          list.map((u) => ({
-            _id: u._id,
-            name: u.name,
-            department: u.department || 'General',
-          }))
-        );
-        setFacultyLoading(false);
-        return;
-      }
-    } catch (err) {
-      console.warn('[Attendance] /admin/users not accessible');
-    }
-
-    setFacultyList([]);
-    setFacultyError('Faculty list not available. Please enter the Faculty ID manually.');
-    setFacultyLoading(false);
-  }, []);
-
+  // ─── Fetch Staff List for Search Bar ────────────────────────
   useEffect(() => {
-    if (!isStaff) {
-      fetchFacultyList();
-    }
-  }, [isStaff, fetchFacultyList]);
+    const fetchStaff = async () => {
+      try {
+        const res = await axiosClient.get('/staff/list');
+        setStaffList(res.data?.staff || res.staff || []);
+      } catch (err) {
+        console.error("Failed to load staff list", err);
+      }
+    };
+    if (!isStaff) fetchStaff();
+  }, [isStaff]);
 
   // ─── Fetch Attendance Requests ──────────────────────────────
-  // Staff uses the status filter. Students always see all their own requests.
   const fetchRequests = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -155,7 +104,8 @@ export default function AttendancePage() {
       });
 
       setSuccessMsg('Request submitted! The faculty will review it shortly.');
-      setForm({ ...form, date: '', course: '', reason: '' });
+      setForm({ ...form, date: '', course: '', reason: '', facultyId: '' });
+      setStaffSearch('');
       fetchRequests();
     } catch (err) {
       setError(err?.message || 'Failed to submit request.');
@@ -202,23 +152,15 @@ export default function AttendancePage() {
         </p>
       </div>
 
-      {/* ===== GLOBAL ERROR ALERT ===== */}
+      {/* ===== ALERTS ===== */}
       {error && (
         <div className="flex items-center gap-2 bg-rose-500/10 border border-rose-500/30 rounded-xl px-4 py-3 text-sm text-rose-400">
           <AlertCircle className="w-4 h-4 shrink-0" />{error}
         </div>
       )}
-
       {successMsg && (
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400">
           <CheckCircle className="w-4 h-4 shrink-0" />{successMsg}
-        </div>
-      )}
-
-      {!isStaff && facultyError && (
-        <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 text-sm text-amber-400">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          <span>{facultyError}</span>
         </div>
       )}
 
@@ -264,38 +206,58 @@ export default function AttendancePage() {
                 className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
               />
             </div>
-            <div>
+
+            {/* ===== STAFF SEARCH BAR ===== */}
+            <div className="relative">
               <label className="block text-xs text-slate-400 mb-1 flex items-center gap-1">
                 <Users className="w-3 h-3" /> Faculty Member
-                {facultyLoading && <Loader2 className="w-3 h-3 animate-spin ml-1" />}
               </label>
-              {facultyList.length > 0 ? (
-                <select
-                  required
-                  value={form.facultyId}
-                  onChange={(e) => setForm({ ...form, facultyId: e.target.value })}
-                  disabled={submitting}
-                  className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500"
-                >
-                  <option value="">Select a faculty member</option>
-                  {facultyList.map((f) => (
-                    <option key={f._id} value={f._id}>
-                      {f.name}{f.department ? ` (${f.department})` : ''}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  required
-                  placeholder="Paste faculty ObjectId"
-                  value={form.facultyId}
-                  onChange={(e) => setForm({ ...form, facultyId: e.target.value })}
-                  disabled={submitting || facultyLoading}
-                  className="w-full px-3 py-2 bg-[#0e192f] border border-[#1b2b4c] rounded-xl text-sm text-slate-200 focus:outline-none focus:border-emerald-500 font-mono text-xs"
-                />
+
+              <input
+                type="text"
+                placeholder="Search by faculty name or email..."
+                value={staffSearch}
+                onChange={(e) => {
+                  setStaffSearch(e.target.value);
+                  setShowStaffDropdown(true);
+                  setForm({ ...form, facultyId: '' });
+                }}
+                onFocus={() => setShowStaffDropdown(true)}
+                className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-2 text-white text-sm focus:border-emerald-500 focus:outline-none"
+              />
+
+              {showStaffDropdown && staffSearch.length > 0 && (
+                <ul className="absolute z-50 w-full mt-1 bg-[#0e192f] border border-[#1b2b4c] rounded-xl shadow-2xl max-h-48 overflow-y-auto">
+                  {staffList
+                    .filter(s =>
+                      s.name.toLowerCase().includes(staffSearch.toLowerCase()) ||
+                      s.email.toLowerCase().includes(staffSearch.toLowerCase())
+                    )
+                    .map(s => (
+                      <li
+                        key={s._id}
+                        onClick={() => {
+                          setForm({ ...form, facultyId: s._id });
+                          setStaffSearch(`${s.name} (${s.department || 'Staff'})`);
+                          setShowStaffDropdown(false);
+                        }}
+                        className="px-4 py-2 text-sm text-slate-300 hover:bg-[#16274a] cursor-pointer border-b border-[#1b2b4c] last:border-0"
+                      >
+                        <div className="font-bold text-white">{s.name}</div>
+                        <div className="text-xs text-slate-500">{s.email}</div>
+                      </li>
+                    ))}
+                  {staffList.filter(s => s.name.toLowerCase().includes(staffSearch.toLowerCase())).length === 0 && (
+                    <li className="px-4 py-2 text-sm text-slate-500 italic">No staff found...</li>
+                  )}
+                </ul>
+              )}
+
+              {form.facultyId && (
+                <p className="text-xs text-emerald-400 mt-1">✅ Selected ID: {form.facultyId}</p>
               )}
             </div>
+
             <div className="sm:col-span-2">
               <label className="block text-xs text-slate-400 mb-1">Reason for Delay</label>
               <textarea
@@ -311,7 +273,7 @@ export default function AttendancePage() {
             <div className="sm:col-span-2">
               <button
                 type="submit"
-                disabled={submitting || facultyLoading || facultyList.length === 0}
+                disabled={submitting}
                 className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-semibold text-sm rounded-xl transition"
               >
                 {submitting ? 'Submitting...' : 'Submit Request'}
@@ -321,18 +283,17 @@ export default function AttendancePage() {
         </div>
       )}
 
-      {/* ===== STAFF FILTER BAR (only visible to staff/admin) ===== */}
+      {/* ===== STAFF FILTER BAR ===== */}
       {isStaff && (
         <div className="flex gap-2">
           {['pending', 'approved', 'rejected'].map((status) => (
             <button
               key={status}
               onClick={() => setFilterStatus(status)}
-              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${
-                filterStatus === status
+              className={`px-4 py-2 rounded-xl text-sm font-semibold capitalize transition ${filterStatus === status
                   ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30'
                   : 'bg-[#0c162b] text-slate-400 hover:text-white border border-[#16274a]'
-              }`}
+                }`}
             >
               {status}
             </button>
@@ -343,9 +304,7 @@ export default function AttendancePage() {
       {/* ===== REQUESTS LIST ===== */}
       <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
         <h2 className="font-bold text-white mb-4">
-          {isStaff
-            ? `Review Queue (${filterStatus})`
-            : 'My Requests'}
+          {isStaff ? `Review Queue (${filterStatus})` : 'My Requests'}
         </h2>
 
         {loading ? (
@@ -354,15 +313,12 @@ export default function AttendancePage() {
           </div>
         ) : requests.length === 0 ? (
           <p className="text-sm text-slate-500 text-center py-6">
-            No {filterStatus} requests found.
+            No {isStaff ? filterStatus : ''} requests found.
           </p>
         ) : (
           <div className="space-y-3">
             {requests.map((req) => (
-              <div
-                key={req._id}
-                className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-4"
-              >
+              <div key={req._id} className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-4 py-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
@@ -383,6 +339,11 @@ export default function AttendancePage() {
                         Student: {req.studentId.name}
                       </div>
                     )}
+                    {req.facultyId?.name && (
+                      <div className="text-xs text-slate-500 mt-1">
+                        Faculty: {req.facultyId.name}
+                      </div>
+                    )}
                     {req.reviewRemarks && (
                       <div className="text-xs text-slate-500 mt-1 italic">
                         Remarks: {req.reviewRemarks}
@@ -391,35 +352,22 @@ export default function AttendancePage() {
                   </div>
 
                   <div className="flex items-center gap-3 shrink-0">
-                    <span
-                      className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${STATUS_STYLES[req.status] || STATUS_STYLES.pending}`}
-                    >
+                    <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${STATUS_STYLES[req.status] || STATUS_STYLES.pending}`}>
                       {req.status}
                     </span>
 
                     {!isStaff && req.status === 'pending' && (
-                      <button
-                        onClick={() => handleCancel(req._id)}
-                        className="text-xs text-rose-400 hover:text-rose-300 transition"
-                      >
+                      <button onClick={() => handleCancel(req._id)} className="text-xs text-rose-400 hover:text-rose-300 transition">
                         Cancel
                       </button>
                     )}
 
                     {isStaff && req.status === 'pending' && (
                       <div className="flex gap-1">
-                        <button
-                          onClick={() => handleReview(req._id, 'approve')}
-                          className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 rounded-lg transition"
-                          title="Approve"
-                        >
+                        <button onClick={() => handleReview(req._id, 'approve')} className="p-1.5 bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/40 rounded-lg transition" title="Approve">
                           <CheckCircle className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => handleReview(req._id, 'reject')}
-                          className="p-1.5 bg-rose-600/20 text-rose-400 hover:bg-rose-600/40 rounded-lg transition"
-                          title="Reject"
-                        >
+                        <button onClick={() => handleReview(req._id, 'reject')} className="p-1.5 bg-rose-600/20 text-rose-400 hover:bg-rose-600/40 rounded-lg transition" title="Reject">
                           <XCircle className="w-4 h-4" />
                         </button>
                       </div>

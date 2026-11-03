@@ -8,10 +8,14 @@ import { requireRole } from '../../middleware/role.js';
 import {
   getAttendanceForReviewController,
   reviewAttendanceController,
+  getStaffListController,
 } from './staff.controller.js';
 
 const router = Router();
 const staffAuth = [authenticate, requireRole('staff', 'admin')];
+
+// Allow any authenticated user to fetch the staff list
+router.get('/list', authenticate, getStaffListController);
 
 // GET /api/staff/attendance — list pending attendance requests for this faculty
 router.get(

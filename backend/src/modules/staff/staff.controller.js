@@ -1,11 +1,21 @@
 // Staff controller delegating attendance review requests to staff service
 
 import { sendSuccess, sendPaginated, buildPagination } from '../../utils/response.js';
+
 import { parsePagination } from '../../utils/pagination.js';
 import {
   listAttendanceRequestsForReview,
   reviewAttendance,
+  listStaffMembers,
 } from './staff.service.js';
+
+// GET /api/staff/list
+export const getStaffListController = async (req, res, next) => {
+  try {
+    const result = await listStaffMembers();
+    return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};
 
 // Retrieve paginated list of attendance requests assigned to faculty member for review
 export const getAttendanceForReviewController = async (req, res, next) => {
