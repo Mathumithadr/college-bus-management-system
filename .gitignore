@@ -1,4 +1,4 @@
-﻿# === Dependencies ===
+# === Dependencies ===
 node_modules/
 */node_modules/
 
@@ -38,3 +38,5 @@ data/
 
 # === Vite ===
 .vite/
+
+commands.txt

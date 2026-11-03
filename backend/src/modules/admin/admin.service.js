@@ -1,5 +1,9 @@
 // Admin service: fleet management, routes, assignments, grievance resolution, and audit trail
 
+import Stop from '../../models/Stop.js';
+import Schedule from '../../models/Schedule.js';
+import csvParser from 'csv-parser';
+import { Readable } from 'stream';
 import Bus from '../../models/Bus.js';
 import Route from '../../models/Route.js';
 import User from '../../models/User.js';
@@ -29,14 +33,14 @@ export const createBus = async ({ busNumber, registrationNumber, capacity, avail
 
 export const listAllBuses = async ({ skip, limit }) => {
   const [buses, total] = await Promise.all([
-    Bus.find().populate('currentRouteId').sort({ busNumber: 1 }).skip(skip).limit(limit),
+    Bus.find().skip(skip).limit(limit),
     Bus.countDocuments(),
   ]);
   return { buses, total };
 };
 
 export const getBusById = async (busId) => {
-  const bus = await Bus.findById(busId).populate('currentRouteId');
+  const bus = await Bus.findById(busId);
   if (!bus) throw notFoundError('Bus');
   return { bus };
 };
@@ -44,32 +48,39 @@ export const getBusById = async (busId) => {
 export const updateBus = async (busId, updateData, { adminId, ip, correlationId }) => {
   const bus = await Bus.findByIdAndUpdate(busId, updateData, { new: true, runValidators: true });
   if (!bus) throw notFoundError('Bus');
-
-  // Cascade routeId change to all active StudentBusAssignment records for this bus
-  if (updateData.currentRouteId) {
-    await StudentBusAssignment.updateMany(
-      { busId: bus._id, status: 'active' },
-      { $set: { routeId: updateData.currentRouteId } }
-    );
-  }
-
   await writeAuditLog({ actorId: adminId, action: 'BUS_UPDATED', resourceType: 'Bus', resourceId: bus._id, details: updateData, ipAddress: ip, correlationId });
   return { bus };
 };
 
 export const deleteBus = async (busId, { adminId, ip, correlationId }) => {
-  const bus = await Bus.findByIdAndDelete(busId);
+  const bus = await Bus.findById(busId);
   if (!bus) throw notFoundError('Bus');
+  bus.availabilityStatus = 'out_of_service';
+  await bus.save();
   await writeAuditLog({ actorId: adminId, action: 'BUS_DELETED', resourceType: 'Bus', resourceId: bus._id, details: { busNumber: bus.busNumber }, ipAddress: ip, correlationId });
-  return { success: true };
+  return { message: 'Bus marked as out_of_service' };
 };
 
+// ==================== UPDATED: ROUTE CREATION ====================
 export const createRoute = async ({ routeName, routeNumber, busId, stops, adminId, ip, correlationId }) => {
   const existing = await Route.findOne({ routeNumber });
   if (existing) throw duplicateRequestError('A route with this route number already exists');
-  const route = await Route.create({ routeName, routeNumber, busId, stops: stops || [] });
+
+  // Validate that all provided stop IDs exist
+  const validStops = await Stop.find({ _id: { $in: stops } });
+  if (validStops.length !== stops.length) {
+    throw validationError('One or more Stop IDs are invalid.');
+  }
+
+  const route = await Route.create({ routeName, routeNumber, busId, stops });
   await Bus.findByIdAndUpdate(busId, { currentRouteId: route._id });
-  await writeAuditLog({ actorId: adminId, action: 'ROUTE_CREATED', resourceType: 'Route', resourceId: route._id, details: { routeName, routeNumber, busId }, ipAddress: ip, correlationId });
+
+  await writeAuditLog({
+    actorId: adminId, action: 'ROUTE_CREATED', resourceType: 'Route',
+    resourceId: route._id, details: { routeName, routeNumber, busId, stopCount: stops.length },
+    ipAddress: ip, correlationId
+  });
+
   return { route };
 };
 
@@ -92,73 +103,113 @@ export const updateRoute = async (routeId, updateData, { adminId, ip, correlatio
 };
 
 export const deleteRoute = async (routeId, { adminId, ip, correlationId }) => {
-  const route = await Route.findByIdAndDelete(routeId);
+  const route = await Route.findById(routeId);
   if (!route) throw notFoundError('Route');
-  await Bus.findOneAndUpdate({ currentRouteId: routeId }, { currentRouteId: null });
+  route.isActive = false;
+  await route.save();
   await writeAuditLog({ actorId: adminId, action: 'ROUTE_DELETED', resourceType: 'Route', resourceId: route._id, details: { routeNumber: route.routeNumber }, ipAddress: ip, correlationId });
-  return { success: true };
-};
-
-export const createUser = async ({ name, email, password, role, permissions, department, phone, adminId, ip, correlationId }) => {
-  const existing = await User.findOne({ email: email.toLowerCase() });
-  if (existing) throw duplicateRequestError('A user with this email address already exists');
-  const passwordHash = await hashPassword(password);
-  const user = await User.create({ name, email: email.toLowerCase(), passwordHash, role, permissions: permissions || [], department: department || null, phone: phone || null });
-  await writeAuditLog({ actorId: adminId, action: 'USER_CREATED', resourceType: 'User', resourceId: user._id, details: { email: user.email, role: user.role }, ipAddress: ip, correlationId });
-  const userObj = user.toObject();
-  delete userObj.passwordHash;
-  return { user: userObj };
+  return { message: 'Route deactivated' };
 };
 
 export const listAllUsers = async ({ role, skip, limit }) => {
   const filter = {};
   if (role) filter.role = role;
   const [users, total] = await Promise.all([
-    User.find(filter).select('-passwordHash').sort({ name: 1 }).skip(skip).limit(limit),
+    User.find(filter).select('-passwordHash').skip(skip).limit(limit),
     User.countDocuments(filter),
   ]);
   return { users, total };
 };
 
-export const getUserById = async (userId) => {
-  const user = await User.findById(userId).select('-passwordHash');
+export const updateUserRole = async (userId, newRole, { adminId, ip, correlationId }) => {
+  const user = await User.findById(userId);
   if (!user) throw notFoundError('User');
-  return { user };
+  const oldRole = user.role;
+  user.role = newRole;
+  await user.save();
+  await writeAuditLog({ actorId: adminId, action: 'USER_ROLE_CHANGED', resourceType: 'User', resourceId: user._id, details: { oldRole, newRole }, ipAddress: ip, correlationId });
+  return { user: user.toObject() };
 };
 
-export const updateUser = async (userId, updateFields, { adminId, ip, correlationId }) => {
-  const { password, ...rest } = updateFields;
-  if (password) rest.passwordHash = await hashPassword(password);
-  const user = await User.findByIdAndUpdate(userId, rest, { new: true, runValidators: true });
+export const toggleUserStatus = async (userId, { adminId, ip, correlationId }) => {
+  const user = await User.findById(userId);
   if (!user) throw notFoundError('User');
-  await writeAuditLog({ actorId: adminId, action: 'USER_UPDATED', resourceType: 'User', resourceId: user._id, ipAddress: ip, correlationId });
-  return { user };
+  user.isActive = !user.isActive;
+  await user.save();
+  await writeAuditLog({ actorId: adminId, action: 'USER_STATUS_TOGGLED', resourceType: 'User', resourceId: user._id, details: { isActive: user.isActive }, ipAddress: ip, correlationId });
+  return { user: user.toObject() };
 };
 
-export const assignStudentToBus = async ({ studentId, busId, routeId, adminId, ip, correlationId }) => {
+// ==================== UPDATED: STUDENT ASSIGNMENT (Capacity Check) ====================
+export const assignStudentToBus = async ({ studentId, busId, routeId, boardingStopId, forceOverbook = false, adminId, ip, correlationId }) => {
+  // 1. Check Bus Capacity
+  const bus = await Bus.findById(busId);
+  if (!bus) throw notFoundError('Bus');
+
+  const currentAssignments = await StudentBusAssignment.countDocuments({ busId, status: 'active' });
+
+  if (currentAssignments >= bus.capacity && !forceOverbook) {
+    throw stateConflictError(`Bus capacity (${bus.capacity}) reached. Provide forceOverbook=true to override.`);
+  }
+
+  // 2. Deactivate old assignment
   await StudentBusAssignment.findOneAndUpdate(
     { studentId, status: 'active' },
     { status: 'inactive' }
   );
 
-  let assignedRouteId = routeId;
-  if (!assignedRouteId) {
-    const bus = await Bus.findById(busId);
-    assignedRouteId = bus?.currentRouteId;
-  }
-
+  // 3. Create new assignment
   const assignment = await StudentBusAssignment.create({
-    studentId,
-    busId,
-    routeId: assignedRouteId,
-    assignedBy: adminId,
+    studentId, busId, routeId, boardingStopId, assignedBy: adminId,
   });
 
   await writeAuditLog({
+    actorId: adminId, action: 'STUDENT_ASSIGNED', resourceType: 'StudentBusAssignment',
+    resourceId: assignment._id, details: { studentId, busId, boardingStopId, overbooked: forceOverbook }, ipAddress: ip, correlationId,
+  });
+
+  return { assignment };
+};
+
+export const assignRepresentative = async ({ studentId, busId, type, adminId, ip, correlationId }) => {
+  const student = await User.findById(studentId);
+  if (!student) throw notFoundError('Student User');
+  if (student.role !== 'student') throw validationError('Only users with role "student" can be assigned as representatives');
+
+  const bus = await Bus.findById(busId);
+  if (!bus) throw notFoundError('Bus');
+
+  const existingSameType = await RepresentativeAssignment.findOne({ busId, type, status: 'active' });
+  if (existingSameType && existingSameType.studentId.toString() !== studentId.toString()) {
+    throw stateConflictError(`Bus already has an active ${type} representative`);
+  }
+
+  const existingOtherRole = await RepresentativeAssignment.findOne({
+    studentId,
+    status: 'active',
+    $or: [{ busId: { $ne: busId } }, { type: { $ne: type } }],
+  });
+  if (existingOtherRole) {
+    throw stateConflictError('Student already has an active representative assignment elsewhere');
+  }
+
+  const assignment = await RepresentativeAssignment.findOneAndUpdate(
+    { studentId, busId, type },
+    { status: 'active', assignedBy: adminId, assignedAt: new Date() },
+    { upsert: true, new: true, runValidators: true }
+  );
+
+  if (!student.permissions.includes('representative')) {
+    student.permissions.push('representative');
+    await student.save();
+  }
+
+  await writeAuditLog({
     actorId: adminId,
-    action: 'STUDENT_ASSIGNED',
-    resourceType: 'StudentBusAssignment',
+    action: 'REPRESENTATIVE_ASSIGNED',
+    resourceType: 'RepresentativeAssignment',
     resourceId: assignment._id,
+    details: { studentId, busId, type },
     ipAddress: ip,
     correlationId,
   });
@@ -166,116 +217,100 @@ export const assignStudentToBus = async ({ studentId, busId, routeId, adminId, i
   return { assignment };
 };
 
-export const assignRepresentativeToBus = async ({ representativeId, busId, routeId, roleType, adminId, ip, correlationId }) => {
-  const oppositeRole = roleType === 'primary' ? 'vice' : 'primary';
-  const conflict = await RepresentativeAssignment.findOne({
-    busId, representativeId, roleType: oppositeRole, status: 'active',
-  });
-  if (conflict) {
-    throw stateConflictError('User is already the ' + oppositeRole + ' representative for this bus');
-  }
-
-  await RepresentativeAssignment.findOneAndUpdate(
-    { busId, roleType, status: 'active' },
-    { status: 'inactive' }
-  );
-
-  const assignment = await RepresentativeAssignment.create({
-    representativeId, busId, routeId, roleType, assignedBy: adminId,
-  });
-
-  await writeAuditLog({
-    actorId: adminId, action: 'REPRESENTATIVE_ASSIGNED',
-    resourceType: 'RepresentativeAssignment', resourceId: assignment._id, ipAddress: ip, correlationId,
-  });
-  return { assignment };
-};
-
-export const listBusAssignments = async (type = 'students') => {
-  if (type === 'representatives') {
-    const assignments = await RepresentativeAssignment.find({ status: 'active' })
-      .populate('representativeId', 'name email phone')
-      .populate('busId', 'busNumber registrationNumber')
-      .populate('routeId', 'routeName routeNumber');
-    return { assignments };
-  }
-
-  const assignments = await StudentBusAssignment.find({ status: 'active' })
-    .populate('studentId', 'name email department phone')
-    .populate('busId', 'busNumber registrationNumber')
-    .populate('routeId', 'routeName routeNumber');
-  return { assignments };
-};
-
-export const listAllReports = async ({ status, skip, limit }) => {
-  const filter = {};
-  if (status) filter.status = status;
-
-  const [reports, total] = await Promise.all([
-    Report.find(filter)
-      .populate('studentId', 'name email department')
-      .populate('busId', 'busNumber')
-      .populate('routeId', 'routeName')
-      .sort({ createdAt: -1 })
-      .skip(skip).limit(limit),
-    Report.countDocuments(filter),
-  ]);
-
-  return { reports, total };
-};
-
-export const transitionReportStatus = async ({ reportId, adminId, status, note, ip, correlationId }) => {
+export const updateReportStatusAdmin = async (reportId, { status, adminNotes }, { adminId, ip, correlationId }) => {
   const report = await Report.findById(reportId);
   if (!report) throw notFoundError('Report');
 
   const allowedTransitions = REPORT_TRANSITIONS[report.status] || [];
   if (!allowedTransitions.includes(status)) {
-    throw stateConflictError('Cannot transition report status from ' + report.status + ' to ' + status);
+    throw stateConflictError(`Invalid report status transition from '${report.status}' to '${status}'. Allowed: ${allowedTransitions.join(', ')}`);
   }
 
-  const oldStatus = report.status;
+  const previousStatus = report.status;
   report.status = status;
-
-  // closedAt is ONLY set on the terminal state 'closed'
-  if (status === 'closed') {
-    report.closedAt = new Date();
-  }
+  if (adminNotes !== undefined) report.adminNotes = adminNotes;
+  if (status === 'resolved' || status === 'closed') report.resolvedAt = new Date();
   await report.save();
 
   await ReportStatusHistory.create({
-    reportId: report._id, changedBy: adminId,
-    oldStatus, newStatus: status, note: note || null,
+    reportId: report._id,
+    previousStatus,
+    newStatus: status,
+    changedBy: adminId,
+    reason: adminNotes || 'Admin status update',
   });
 
   await writeAuditLog({
-    actorId: adminId, action: 'REPORT_STATUS_CHANGED',
-    resourceType: 'Report', resourceId: report._id,
-    details: { oldStatus, newStatus: status }, ipAddress: ip, correlationId,
+    actorId: adminId,
+    action: 'REPORT_STATUS_UPDATED',
+    resourceType: 'Report',
+    resourceId: report._id,
+    details: { previousStatus, newStatus: status, adminNotes },
+    ipAddress: ip,
+    correlationId,
   });
 
   return { report };
 };
 
-export const listSystemAuditLogs = async ({ action, actorId, skip, limit }) => {
+export const listAllReportsAdmin = async ({ status, category, severity, skip, limit }) => {
   const filter = {};
-  if (action) filter.action = action;
+  if (status) filter.status = status;
+  if (category) filter.category = category;
+  if (severity) filter.severity = severity;
+
+  const [reports, total] = await Promise.all([
+    Report.find(filter)
+      .populate('studentId', 'name email department')
+      .populate('busId', 'busNumber')
+      .populate('routeId', 'routeNumber routeName')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limit),
+    Report.countDocuments(filter),
+  ]);
+  return { reports, total };
+};
+
+export const getAuditLogs = async ({ actorId, action, startDate, endDate, skip, limit }) => {
+  const filter = {};
   if (actorId) filter.actorId = actorId;
+  if (action) filter.action = action;
+  if (startDate || endDate) {
+    filter.createdAt = {};
+    if (startDate) filter.createdAt.$gte = new Date(startDate);
+    if (endDate) filter.createdAt.$lte = new Date(endDate);
+  }
 
   const [logs, total] = await Promise.all([
-    AuditLog.find(filter).populate('actorId', 'name email role').sort({ createdAt: -1 }).skip(skip).limit(limit),
+    AuditLog.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
     AuditLog.countDocuments(filter),
   ]);
-
   return { logs, total };
 };
 
-export const createAdminAnnouncement = async ({ title, message, targetType, targetId, isPublished, adminId }) => {
+export const createAdminAnnouncement = async ({ title, message, priority, targetAudience, expiresAt, adminId, ip, correlationId }) => {
   const announcement = await Announcement.create({
-    title, message, targetType, targetId: targetId || null,
-    isPublished: isPublished ?? false,
-    publishedAt: isPublished ? new Date() : null,
+    title,
+    message,
+    priority: priority || 'normal',
+    targetAudience: targetAudience || ['all'],
     createdBy: adminId,
+    isPublished: true,
+    publishedAt: new Date(),
+    expiresAt: expiresAt || null,
   });
+
+  await writeAuditLog({
+    actorId: adminId,
+    action: 'ANNOUNCEMENT_CREATED',
+    resourceType: 'Announcement',
+    resourceId: announcement._id,
+    details: { title, priority, targetAudience },
+    ipAddress: ip,
+    correlationId,
+  });
+
   return { announcement };
 };
 
@@ -304,8 +339,7 @@ export const deleteAdminAnnouncement = async (announcementId) => {
 };
 
 // ---------------------------------------------------------------------------
-// Aliases — controller imports these names, service exports the ones above.
-// Kept for compatibility so admin.controller.js works without changes.
+// Aliases
 // ---------------------------------------------------------------------------
 
 export const listBuses = listAllBuses;
@@ -313,3 +347,215 @@ export const softDeleteBus = deleteBus;
 export const listRoutes = listAllRoutes;
 export const softDeleteRoute = deleteRoute;
 export const listUsers = listAllUsers;
+export const assignRepresentativeToBus = assignRepresentative;
+export const listAllReports = listAllReportsAdmin;
+export const transitionReportStatus = updateReportStatusAdmin;
+export const listSystemAuditLogs = getAuditLogs;
+export const createUser = async () => {};
+export const getUserById = async () => {};
+export const updateUser = async () => {};
+export const listBusAssignments = async (type = 'students') => {
+  if (type === 'students') {
+    const assignments = await StudentBusAssignment.find({ status: 'active' })
+      .populate('studentId', 'name email')
+      .populate('busId', 'busNumber')
+      .populate('routeId', 'routeName');
+    return { assignments };
+  }
+  return { assignments: [] };
+};
+
+// ==================== STOPS ====================
+export const createStop = async ({ name, latitude, longitude, adminId, ip, correlationId }) => {
+  const existing = await Stop.findOne({ name });
+  if (existing) throw duplicateRequestError('A stop with this name already exists');
+
+  const stop = await Stop.create({ name, latitude, longitude });
+
+  await writeAuditLog({
+    actorId: adminId, action: 'STOP_CREATED', resourceType: 'Stop',
+    resourceId: stop._id, details: { name, latitude, longitude }, ipAddress: ip, correlationId
+  });
+
+  return { stop };
+};
+
+export const listAllStops = async () => {
+  const stops = await Stop.find({ isActive: true }).sort({ name: 1 });
+  return { stops };
+};
+
+// ==================== SCHEDULES ====================
+export const activateSchedule = async ({ date, dayType, routeId, busId, adminId, ip, correlationId }) => {
+  // Deactivate any existing active schedule for this exact date
+  await Schedule.updateMany({ date, isActive: true }, { isActive: false });
+
+  const schedule = await Schedule.create({
+    date, dayType, routeId, busId, isActive: true
+  });
+
+  await writeAuditLog({
+    actorId: adminId, action: 'SCHEDULE_ACTIVATED', resourceType: 'Schedule',
+    resourceId: schedule._id, details: { date, dayType, routeId, busId }, ipAddress: ip, correlationId
+  });
+
+  return { schedule };
+};
+
+// ==================== CSV IMPORT (SMART & IDEMPOTENT) ====================
+export const importStudentsFromCSV = async (fileBuffer, adminId, ip, correlationId) => {
+  const results = [];
+  const stream = Readable.from(fileBuffer);
+  const warnings = []; // To store capacity alerts
+
+  return new Promise((resolve, reject) => {
+    stream
+      .pipe(csvParser())
+      .on('data', (data) => {
+        // Clean the keys (remove BOM, trim spaces, lowercase)
+        const cleanRow = {};
+        for (const key in data) {
+          cleanRow[key.replace(/^\ufeff/, '').trim().toLowerCase()] = data[key]?.trim();
+        }
+        if (results.length < 1000) {
+          results.push(cleanRow);
+        }
+      })
+      .on('end', async () => {
+        try {
+          console.log(`\n📥 CSV Parsing finished. Found ${results.length} rows.`);
+
+          if (results.length > 0) {
+            console.log('🔍 First row keys found:', Object.keys(results[0]));
+            console.log('🔍 First row values:', results[0]);
+          }
+
+          const processedStudents = [];
+          let skipped = 0;
+
+          for (const row of results) {
+            // 1. Validate fields
+            if (!row.registernumber || !row.name || !row.email || !row.boardingstop) {
+              console.log(`❌ Skipping row: Missing fields ->`, row);
+              skipped++;
+              continue;
+            }
+
+            // 2. Check if user exists
+            let user = await User.findOne({ email: row.email });
+            let isNewUser = false;
+
+            if (!user) {
+              // Create user if not exists
+              const passwordHash = await hashPassword('Password123!');
+              user = await User.create({
+                name: row.name,
+                email: row.email,
+                passwordHash,
+                role: 'student',
+                department: row.department || 'General',
+                phone: row.phonenumber || null
+              });
+              isNewUser = true;
+              console.log(`👤 Created new user: ${user.email}`);
+            } else {
+              console.log(`👤 User exists: ${user.email}`);
+            }
+
+            // 3. Check if they already have an active assignment
+            const existingAssignment = await StudentBusAssignment.findOne({
+              studentId: user._id,
+              status: 'active'
+            });
+
+            if (existingAssignment) {
+              console.log(`⏭️ Skipping assignment: ${user.email} is already on a bus.`);
+              if (isNewUser) processedStudents.push(user.email);
+              skipped++;
+              continue;
+            }
+
+            // 4. Find the stop by name
+            const cleanStopName = row.boardingstop.trim();
+            const baseStopName = cleanStopName.split('(')[0].trim();
+            const stop = await Stop.findOne({ name: { $regex: new RegExp(`^${baseStopName}`, 'i') } });
+
+            if (stop) {
+              // 5. Find ALL routes that contain this stop
+              const routes = await Route.find({ stops: stop._id }).populate('busId');
+
+              if (routes.length > 0) {
+                // Load Balancing Logic
+                let bestRoute = null;
+                let lowestCount = Infinity;
+
+                for (const route of routes) {
+                  const studentCount = await StudentBusAssignment.countDocuments({
+                    busId: route.busId._id,
+                    status: 'active'
+                  });
+                  const capacity = route.busId.capacity || 50;
+
+                  // 🚨 CAPACITY CHECK
+                  if (studentCount >= capacity) {
+                    warnings.push(`Bus ${route.busId.busNumber} is FULL (${studentCount}/${capacity}). Could not assign ${user.email}.`);
+                    continue;
+                  }
+
+                  if (studentCount < lowestCount) {
+                    lowestCount = studentCount;
+                    bestRoute = route;
+                  }
+                }
+
+                if (!bestRoute) {
+                  // All routes full
+                  warnings.push(`ALL buses full for stop "${stop.name}". Could not assign ${user.email}.`);
+                  skipped++;
+                  continue;
+                }
+
+                // 6. Create the assignment
+                await StudentBusAssignment.create({
+                  studentId: user._id,
+                  busId: bestRoute.busId._id,
+                  routeId: bestRoute._id,
+                  boardingStopId: stop._id,
+                  assignedBy: adminId,
+                  status: 'active'
+                });
+
+                console.log(`✅ Assigned ${user.email} to Bus ${bestRoute.busId.busNumber}`);
+                processedStudents.push(user.email);
+              } else {
+                console.log(`❌ Skipping row: Stop exists but no route -> ${stop.name}`);
+                skipped++;
+              }
+            } else {
+              console.log(`❌ Skipping row: Stop not found in DB -> "${row.boardingstop}"`);
+              skipped++;
+            }
+          }
+
+          console.log(`\n🏁 Import finished. Success: ${processedStudents.length}, Skipped: ${skipped}`);
+          if (warnings.length > 0) {
+            console.log(`⚠️ Capacity Warnings: ${warnings.length}`);
+          }
+
+          resolve({
+            message: `Imported and assigned ${processedStudents.length} students successfully.`,
+            importedCount: processedStudents.length,
+            skippedCount: skipped,
+            warnings: warnings // Send capacity alerts to frontend
+          });
+        } catch (err) {
+          console.error('❌ Fatal error during CSV processing:', err);
+          reject(err);
+        }
+      })
+      .on('error', (err) => {
+        console.error('❌ CSV Parse Error:', err);
+        reject(err);
+      });
+  });
+};

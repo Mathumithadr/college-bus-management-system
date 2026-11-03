@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 // Base URL reads from Vite env variable; falls back to the Vite proxy path /api
 const axiosClient = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || '/api',
-  timeout: 15000,
+  timeout: 120000, // Changed from 15000 to 120000 for large CSV imports
   headers: {
     'Content-Type': 'application/json',
   },

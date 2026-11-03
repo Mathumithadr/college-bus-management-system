@@ -5,7 +5,12 @@ import { body, param, query } from 'express-validator';
 import { handleValidation } from '../../middleware/validate.js';
 import { authenticate } from '../../middleware/auth.js';
 import { requireRole } from '../../middleware/role.js';
+import multer from 'multer';
 import {
+  createStopController,
+  getStopsController,
+  activateScheduleController,
+  importStudentsController,
   // Buses
   createBusController, getBusesController, getBusController, updateBusController, deleteBusController,
   // Routes
@@ -29,6 +34,11 @@ import {
 const router = Router();
 const adminAuth = [authenticate, requireRole('admin')];
 
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 } // 2MB limit
+});
+
 // --- Buses ---
 router.post('/buses', [...adminAuth, body('busNumber').notEmpty(), body('registrationNumber').notEmpty(), body('capacity').isInt({ min: 1, max: 100 }), handleValidation], createBusController);
 router.get('/buses', [...adminAuth, query('page').optional().isInt({ min: 1 }), handleValidation], getBusesController);
@@ -37,7 +47,7 @@ router.put('/buses/:id', [...adminAuth, param('id').isMongoId(), handleValidatio
 router.delete('/buses/:id', [...adminAuth, param('id').isMongoId(), handleValidation], deleteBusController);
 
 // --- Routes ---
-router.post('/routes', [...adminAuth, body('routeName').notEmpty(), body('routeNumber').notEmpty(), body('busId').isMongoId(), handleValidation], createRouteController);
+router.post('/routes', [...adminAuth, body('routeName').notEmpty(), body('routeNumber').notEmpty(), body('busId').isMongoId(), body('stops').isArray({ min: 2 }), body('stops.*').isMongoId(), handleValidation], createRouteController);
 router.get('/routes', adminAuth, getRoutesController);
 router.get('/routes/:id', [...adminAuth, param('id').isMongoId(), handleValidation], getRouteController);
 router.put('/routes/:id', [...adminAuth, param('id').isMongoId(), handleValidation], updateRouteController);
@@ -50,7 +60,7 @@ router.get('/users/:id', [...adminAuth, param('id').isMongoId(), handleValidatio
 router.put('/users/:id', [...adminAuth, param('id').isMongoId(), handleValidation], updateUserController);
 
 // --- Assignments ---
-router.post('/assignments/students', [...adminAuth, body('studentId').isMongoId(), body('busId').isMongoId(), body('routeId').isMongoId(), handleValidation], assignStudentController);
+router.post('/assignments/students', [...adminAuth, body('studentId').isMongoId(), body('busId').isMongoId(), body('routeId').isMongoId(), body('boardingStopId').isMongoId(), body('forceOverbook').optional().isBoolean(), handleValidation], assignStudentController);
 router.post('/assignments/representatives', [...adminAuth, body('representativeId').isMongoId(), body('busId').isMongoId(), body('routeId').isMongoId(), body('roleType').isIn(['primary', 'vice']), handleValidation], assignRepresentativeController);
 router.get('/assignments', adminAuth, getAssignmentsController);
 
@@ -73,5 +83,15 @@ router.post('/announcements', [...adminAuth, body('title').notEmpty(), body('mes
 router.get('/announcements', adminAuth, getAnnouncementsController);
 router.put('/announcements/:id', [...adminAuth, param('id').isMongoId(), handleValidation], updateAnnouncementController);
 router.delete('/announcements/:id', [...adminAuth, param('id').isMongoId(), handleValidation], deleteAnnouncementController);
+
+// --- Stops ---
+router.post('/stops', [...adminAuth, body('name').notEmpty(), body('latitude').isFloat(), body('longitude').isFloat(), handleValidation], createStopController);
+router.get('/stops', adminAuth, getStopsController);
+
+// --- Schedules ---
+router.post('/schedules/activate', [...adminAuth, body('date').isISO8601(), body('dayType').isIn(['WEEKDAY', 'SATURDAY', 'SPECIAL']), body('routeId').isMongoId(), body('busId').isMongoId(), handleValidation], activateScheduleController);
+
+// --- CSV Import ---
+router.post('/students/import', [...adminAuth, upload.single('file')], importStudentsController);
 
 export default router;
