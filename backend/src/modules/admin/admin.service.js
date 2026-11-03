@@ -559,3 +559,85 @@ export const importStudentsFromCSV = async (fileBuffer, adminId, ip, correlation
       });
   });
 };
+
+// ==================== STAFF MANAGEMENT (Instructor) ====================
+
+export const createStaffUser = async ({ 
+  name, email, password, department, phone, adminId, ip, correlationId 
+}) => {
+  // 1. Normalize email (workflow: "Normalize email")
+  const normalizedEmail = email.toLowerCase().trim();
+
+  // 2. Duplicate check (workflow: "Database duplicate check")
+  const existing = await User.findOne({ email: normalizedEmail });
+  if (existing) {
+    throw duplicateRequestError('An account with this email already exists');
+  }
+
+  // 3. Hash password (workflow: "Store a secure password hash, never plaintext")
+  const passwordHash = await hashPassword(password);
+
+  // 4. Create user (workflow: "Begin transaction → Create Staff account")
+  //    Role is forced to 'staff' — the frontend cannot override this.
+  const user = await User.create({
+    name: name.trim(),
+    email: normalizedEmail,
+    passwordHash,
+    role: 'staff',
+    department: department || null,
+    phone: phone || null,
+    isActive: true, // Recommendation: Immediate ACTIVE
+  });
+
+  // 5. Audit record (workflow: "Create audit record" — part of atomicity)
+  await writeAuditLog({
+    actorId: adminId,
+    action: 'STAFF_CREATED',
+    resourceType: 'User',
+    resourceId: user._id,
+    details: { email: normalizedEmail, department, createdBy: adminId },
+    ipAddress: ip,
+    correlationId,
+  });
+
+  // 6. Return sanitized user
+  const userObj = user.toObject();
+  delete userObj.passwordHash;
+
+  return { user: userObj };
+};
+
+export const listAllStaff = async ({ skip = 0, limit = 20 } = {}) => {
+  const [staff, total] = await Promise.all([
+    User.find({ role: 'staff' })
+      .select('-passwordHash')
+      .sort({ name: 1 })
+      .skip(skip)
+      .limit(limit),
+    User.countDocuments({ role: 'staff' }),
+  ]);
+  return { staff, total };
+};
+
+export const toggleStaffStatus = async (userId, { adminId, ip, correlationId }) => {
+  const user = await User.findById(userId);
+  if (!user) throw notFoundError('User');
+  if (user.role !== 'staff') {
+    throw validationError('Only staff accounts can be toggled');
+  }
+
+  user.isActive = !user.isActive;
+  await user.save();
+
+  await writeAuditLog({
+    actorId: adminId,
+    action: user.isActive ? 'STAFF_ACTIVATED' : 'STAFF_DEACTIVATED',
+    resourceType: 'User',
+    resourceId: user._id,
+    details: { isActive: user.isActive },
+    ipAddress: ip,
+    correlationId,
+  });
+
+  return { user: user.toObject() };
+};

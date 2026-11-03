@@ -94,4 +94,29 @@ router.post('/schedules/activate', [...adminAuth, body('date').isISO8601(), body
 // --- CSV Import ---
 router.post('/students/import', [...adminAuth, upload.single('file')], importStudentsController);
 
+import { 
+  createStaffController, 
+  getStaffListController, 
+  toggleStaffStatusController 
+} from './admin.controller.js';
+
+// --- Staff Management ---
+router.post('/staff', [
+  ...adminAuth,
+  body('name').notEmpty().withMessage('Name required'),
+  body('email').isEmail().withMessage('Valid email required'),
+  body('password').isLength({ min: 8 }).withMessage('Password min 8 chars'),
+  body('department').optional().isString(),
+  body('phone').optional().isString(),
+  handleValidation
+], createStaffController);
+
+router.get('/staff', adminAuth, getStaffListController);
+
+router.put('/staff/:id/toggle', [
+  ...adminAuth,
+  param('id').isMongoId(),
+  handleValidation
+], toggleStaffStatusController);
+
 export default router;
