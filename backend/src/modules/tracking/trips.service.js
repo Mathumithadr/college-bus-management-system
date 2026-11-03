@@ -31,7 +31,7 @@ export const startTrip = async ({ busId, routeId, repId, ip, correlationId }) =>
 };
 
 // End a trip; authority is rechecked inside the transaction
-export const endTrip = async ({ tripId, repId, ip, correlationId }) => {
+export const endTrip = async ({ tripId, repId, reason, ip, correlationId }) => {
   const session = await mongoose.startSession();
   try {
     let trip;
@@ -42,12 +42,16 @@ export const endTrip = async ({ tripId, repId, ip, correlationId }) => {
       if (String(trip.activeRepresentativeId) !== String(repId)) {
         throw forbiddenError('Only the active representative can end this trip');
       }
+
       trip.tripStatus = 'completed';
       trip.endTime = new Date();
+      // Optional: Save the reason to the Trip document
+      if (reason) trip.endReason = reason;
+
       await trip.save({ session });
       await TripEvent.create([{
         tripId: trip._id, eventType: 'trip_ended', actorId: repId,
-        details: { terminatedBy: 'representative' },
+        details: { terminatedBy: 'representative', reason: reason || 'Standard end' },
       }], { session });
     });
     await writeAuditLog({ actorId: repId, action: 'TRIP_ENDED', resourceType: 'Trip', resourceId: trip._id, ipAddress: ip, correlationId });

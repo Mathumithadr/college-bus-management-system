@@ -185,4 +185,41 @@ router.get(
   }
 );
 
+// GET /api/rep/dashboard — fetch all data needed for the Rep Console
+router.get('/dashboard', repAuth, async (req, res, next) => {
+  try {
+    const RepresentativeAssignment = (await import('../../models/RepresentativeAssignment.js')).default;
+    const Trip = (await import('../../models/Trip.js')).default;
+    const Route = (await import('../../models/Route.js')).default;
+    const Bus = (await import('../../models/Bus.js')).default;
+
+    // 1. Get the active assignment for this user
+    const assignment = await RepresentativeAssignment.findOne({
+      representativeId: req.user._id,
+      status: 'active'
+    }).populate('busId').populate({
+      path: 'routeId',
+      populate: { path: 'stops' }
+    });
+
+    if (!assignment) {
+      return res.json({ success: true, data: { assignment: null, trip: null } });
+    }
+
+    // 2. Check if there is an active trip for this bus
+    const trip = await Trip.findOne({
+      busId: assignment.busId._id,
+      tripStatus: 'in_progress'
+    });
+
+    res.json({
+      success: true,
+      data: {
+        assignment,
+        trip
+      }
+    });
+  } catch (err) { next(err); }
+});
+
 export default router;

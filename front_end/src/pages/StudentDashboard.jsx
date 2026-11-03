@@ -62,10 +62,14 @@ export default function StudentDashboard() {
               </div>
               <div>
                 <p className="text-xs text-slate-400">Bus Representative</p>
-                <p className="text-sm font-bold text-white">{activeRep.name}</p>
+                {/* DYNAMIC LOGIC HERE */}
+                <p className="text-sm font-bold text-white">
+                  {user?._id === activeRep._id ? `${activeRep.name} (You)` : activeRep.name}
+                </p>
               </div>
             </div>
-            {activeRep.phone && (
+            {/* Hide the Call button if the user IS the rep */}
+            {activeRep.phone && user?._id !== activeRep._id && (
               <a href={`tel:${activeRep.phone}`} className="flex items-center gap-2 px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 text-xs font-bold rounded-lg transition">
                 <Phone className="w-3.5 h-3.5" /> Call Rep
               </a>
