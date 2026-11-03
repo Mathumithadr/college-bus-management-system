@@ -3,6 +3,10 @@
 import { sendSuccess, sendPaginated, buildPagination } from '../../utils/response.js';
 import { parsePagination } from '../../utils/pagination.js';
 import {
+  createStop,
+  listAllStops,
+  activateSchedule,
+  importStudentsFromCSV,
   createBus,
   listBuses,
   getBusById,
@@ -163,14 +167,10 @@ export const updateUserController = async (req, res, next) => {
 // Handle student bus allocation
 export const assignStudentController = async (req, res, next) => {
   try {
-    const { studentId, busId, routeId } = req.body;
+    const { studentId, busId, routeId, boardingStopId, forceOverbook } = req.body;
     const result = await assignStudentToBus({
-      studentId,
-      busId,
-      routeId,
-      adminId: req.user._id,
-      ip: req.ip,
-      correlationId: req.correlationId,
+      studentId, busId, routeId, boardingStopId, forceOverbook,
+      adminId: req.user._id, ip: req.ip, correlationId: req.correlationId,
     });
     return sendSuccess(res, result, 201);
   } catch (err) { next(err); }
@@ -197,7 +197,7 @@ export const assignRepresentativeController = async (req, res, next) => {
 export const getAssignmentsController = async (req, res, next) => {
   try {
     const { type } = req.query;
-    const result = await listBusAssignments(type);
+    const result = await listBusAssignments(type || 'students');
     return sendSuccess(res, result);
   } catch (err) { next(err); }
 };
@@ -327,5 +327,48 @@ export const deleteAnnouncementController = async (req, res, next) => {
   try {
     const result = await deleteAdminAnnouncement(req.params.id);
     return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};
+
+// ==================== STOPS ====================
+export const createStopController = async (req, res, next) => {
+  try {
+    const result = await createStop({ ...req.body, adminId: req.user._id, ip: req.ip, correlationId: req.correlationId });
+    return sendSuccess(res, result, 201);
+  } catch (err) { next(err); }
+};
+
+export const getStopsController = async (req, res, next) => {
+  try {
+    const result = await listAllStops();
+    return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};
+
+// ==================== SCHEDULES ====================
+export const activateScheduleController = async (req, res, next) => {
+  try {
+    const result = await activateSchedule({ ...req.body, adminId: req.user._id, ip: req.ip, correlationId: req.correlationId });
+    return sendSuccess(res, result, 201);
+  } catch (err) { next(err); }
+};
+
+// ==================== CSV IMPORT ====================
+export const importStudentsController = async (req, res, next) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, code: 'VALIDATION_FAILED', message: 'No file uploaded' });
+    }
+
+    // Decision 12: Max 2MB file size
+    if (req.file.size > 2 * 1024 * 1024) {
+      return res.status(400).json({ success: false, code: 'FILE_TOO_LARGE', message: 'File exceeds 2MB limit' });
+    }
+
+    const result = await importStudentsFromCSV(
+      req.file.buffer, req.user._id, req.ip, req.correlationId
+    );
+
+    return sendSuccess(res, result, 201);
   } catch (err) { next(err); }
 };

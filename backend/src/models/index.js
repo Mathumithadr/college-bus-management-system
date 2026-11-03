@@ -1,6 +1,8 @@
 const User = require('./User.js');
 const Bus = require('./Bus.js');
 const Route = require('./Route.js');
+const Stop = require('./Stop.js');
+const Schedule = require('./Schedule.js');
 const StudentBusAssignment = require('./StudentBusAssignment.js');
 const RepresentativeAssignment = require('./RepresentativeAssignment.js');
 const Trip = require('./Trip.js');
@@ -20,6 +22,8 @@ module.exports = {
   User,
   Bus,
   Route,
+  Stop,
+  Schedule,
   StudentBusAssignment,
   RepresentativeAssignment,
   Trip,

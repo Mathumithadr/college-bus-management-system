@@ -17,14 +17,15 @@ const studentBusAssignmentSchema = new mongoose.Schema(
       ref: 'Route',
       required: [true, 'Route is required'],
     },
+    boardingStopId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Stop',
+      required: [true, 'Boarding stop is required'], // NEW FIELD
+    },
     assignedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
       required: [true, 'Assigning admin is required'],
-    },
-    assignedAt: {
-      type: Date,
-      default: Date.now,
     },
     status: {
       type: String,
@@ -32,18 +33,12 @@ const studentBusAssignmentSchema = new mongoose.Schema(
       default: 'active',
     },
   },
-  {
-    timestamps: true,
-    collection: 'studentBusAssignments',
-  }
+  { timestamps: true, collection: 'studentBusAssignments' }
 );
 
-// One student can have exactly ONE active assignment at any time
 studentBusAssignmentSchema.index(
   { studentId: 1, status: 1 },
   { unique: true, partialFilterExpression: { status: 'active' } }
 );
-studentBusAssignmentSchema.index({ busId: 1, status: 1 });
-studentBusAssignmentSchema.index({ routeId: 1, status: 1 });
 
 module.exports = mongoose.model('StudentBusAssignment', studentBusAssignmentSchema);
