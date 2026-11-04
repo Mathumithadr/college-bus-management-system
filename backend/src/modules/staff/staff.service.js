@@ -13,11 +13,9 @@ export const listAttendanceRequestsForReview = async ({ facultyId, isAdmin, stat
     filter.facultyId = facultyId;
   }
 
-  // Filter by requested status or default to pending requests
-  if (status) {
+  // Filter by requested status; if status is 'all' or omitted, return all requests for staff stats
+  if (status && status !== 'all') {
     filter.status = status;
-  } else {
-    filter.status = 'pending';
   }
 
   const [requests, total] = await Promise.all([

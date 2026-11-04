@@ -18,9 +18,16 @@ export default function AdminAnnouncementsPage() {
     setLoading(true);
     try {
       const res = await axiosClient.get('/admin/announcements');
-      setAnnouncements(res.data || []);
+      const items = Array.isArray(res?.data)
+        ? res.data
+        : (Array.isArray(res?.data?.announcements)
+          ? res.data.announcements
+          : (Array.isArray(res?.announcements)
+            ? res.announcements
+            : (Array.isArray(res) ? res : [])));
+      setAnnouncements(items);
     } catch (err) {
-      setError(err.message || 'Failed to fetch announcements');
+      setError(err?.response?.data?.message || err.message || 'Failed to fetch announcements');
     } finally {
       setLoading(false);
     }
@@ -39,7 +46,7 @@ export default function AdminAnnouncementsPage() {
       await axiosClient.post('/admin/announcements', {
         title,
         message,
-        targetType,
+        targetType: targetType || 'general',
         isPublished: true,
       });
       setSuccessMsg('Announcement published successfully!');
@@ -48,7 +55,7 @@ export default function AdminAnnouncementsPage() {
       setTargetType('general');
       await fetchAnnouncements();
     } catch (err) {
-      setError(err.message || 'Failed to create announcement');
+      setError(err?.response?.data?.message || err.message || 'Failed to create announcement');
     } finally {
       setSubmitting(false);
     }
@@ -61,7 +68,7 @@ export default function AdminAnnouncementsPage() {
       setSuccessMsg('Announcement deleted');
       await fetchAnnouncements();
     } catch (err) {
-      setError(err.message || 'Failed to delete');
+      setError(err?.response?.data?.message || err.message || 'Failed to delete');
     }
   };
 

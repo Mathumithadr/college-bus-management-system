@@ -302,6 +302,8 @@ export const createAnnouncementController = async (req, res, next) => {
       targetId,
       isPublished,
       adminId: req.user._id,
+      ip: req.ip,
+      correlationId: req.correlationId,
     });
     return sendSuccess(res, result, 201);
   } catch (err) { next(err); }

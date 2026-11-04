@@ -289,16 +289,27 @@ export const getAuditLogs = async ({ actorId, action, startDate, endDate, skip, 
   return { logs, total };
 };
 
-export const createAdminAnnouncement = async ({ title, message, priority, targetAudience, expiresAt, adminId, ip, correlationId }) => {
+export const createAdminAnnouncement = async ({
+  title,
+  message,
+  targetType = 'general',
+  targetId = null,
+  isPublished = true,
+  adminId,
+  ip,
+  correlationId,
+}) => {
+  const finalTargetType = targetType || 'general';
+  const finalTargetId = finalTargetType === 'general' ? null : (targetId || null);
+
   const announcement = await Announcement.create({
     title,
     message,
-    priority: priority || 'normal',
-    targetAudience: targetAudience || ['all'],
+    targetType: finalTargetType,
+    targetId: finalTargetId,
     createdBy: adminId,
-    isPublished: true,
+    isPublished: isPublished !== false,
     publishedAt: new Date(),
-    expiresAt: expiresAt || null,
   });
 
   await writeAuditLog({
@@ -306,7 +317,7 @@ export const createAdminAnnouncement = async ({ title, message, priority, target
     action: 'ANNOUNCEMENT_CREATED',
     resourceType: 'Announcement',
     resourceId: announcement._id,
-    details: { title, priority, targetAudience },
+    details: { title, targetType: finalTargetType, targetId: finalTargetId },
     ipAddress: ip,
     correlationId,
   });

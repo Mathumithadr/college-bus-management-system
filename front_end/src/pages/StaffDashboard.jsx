@@ -27,9 +27,15 @@ export default function StaffDashboard() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await axiosClient.get('/staff/attendance');
-        const list = res.data || res || [];
-        setAllRequests(Array.isArray(list) ? list : []);
+        const res = await axiosClient.get('/staff/attendance?status=all&limit=100');
+        const items = Array.isArray(res?.data)
+          ? res.data
+          : (Array.isArray(res?.data?.requests)
+            ? res.data.requests
+            : (Array.isArray(res?.requests)
+              ? res.requests
+              : (Array.isArray(res) ? res : [])));
+        setAllRequests(items);
       } catch (err) {
         setError(err?.message || 'Failed to load dashboard data.');
       } finally {
@@ -50,14 +56,24 @@ export default function StaffDashboard() {
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-  const firstName = user?.name?.split(' ')[0] || 'Staff';
+
+  // Format faculty name properly: if user has a prefix like "Dr." or "Prof.", display the full name
+  const displayName = (() => {
+    if (!user?.name) return 'Faculty';
+    const trimmed = user.name.trim();
+    const parts = trimmed.split(/\s+/);
+    if (/^(Dr\.?|Prof\.?|Mr\.?|Mrs\.?|Ms\.?)$/i.test(parts[0])) {
+      return trimmed; // e.g. "Dr. Arun Kumar"
+    }
+    return parts[0] || trimmed;
+  })();
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* HEADER */}
       <div>
         <h1 className="text-2xl font-bold text-white">
-          {greeting}, {firstName} 👋
+          {greeting}, {displayName} 👋
         </h1>
         <p className="text-sm text-slate-400 mt-1">
           Here's what needs your attention today.
@@ -85,23 +101,29 @@ export default function StaffDashboard() {
           <div className="text-[10px] text-amber-400 mt-2 font-medium">Needs your review</div>
         </Link>
 
-        <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-5">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mb-3">
-            <CheckCircle className="w-5 h-5" />
+        <Link to="/attendance" className="bg-[#0c162b] border border-[#16274a] hover:border-emerald-500/50 rounded-2xl p-5 transition group">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center group-hover:scale-110 transition">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-emerald-400 transition" />
           </div>
           <div className="text-3xl font-bold text-white">{loading ? '—' : approved.length}</div>
           <div className="text-xs text-slate-400 mt-1">Approved</div>
-          <div className="text-[10px] text-slate-500 mt-2">Total approved</div>
-        </div>
+          <div className="text-[10px] text-emerald-400 mt-2 font-medium">Total approved</div>
+        </Link>
 
-        <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-5">
-          <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center mb-3">
-            <XCircle className="w-5 h-5" />
+        <Link to="/attendance" className="bg-[#0c162b] border border-[#16274a] hover:border-rose-500/50 rounded-2xl p-5 transition group">
+          <div className="flex items-center justify-between mb-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/10 text-rose-400 flex items-center justify-center group-hover:scale-110 transition">
+              <XCircle className="w-5 h-5" />
+            </div>
+            <ArrowRight className="w-4 h-4 text-slate-500 group-hover:text-rose-400 transition" />
           </div>
           <div className="text-3xl font-bold text-white">{loading ? '—' : rejected.length}</div>
           <div className="text-xs text-slate-400 mt-1">Rejected</div>
-          <div className="text-[10px] text-slate-500 mt-2">Total rejected</div>
-        </div>
+          <div className="text-[10px] text-rose-400 mt-2 font-medium">Total rejected</div>
+        </Link>
       </div>
 
       {/* RECENT PENDING REQUESTS */}
