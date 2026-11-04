@@ -1,5 +1,5 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, CalendarCheck, FileText, Megaphone, Shield, Radio } from 'lucide-react';
+import { LayoutDashboard, CalendarCheck, FileText, Megaphone, Shield, Radio, Users } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export default function Sidebar() {
@@ -17,8 +17,9 @@ export default function Sidebar() {
     { label: 'Announcements', path: '/announcements', icon: Megaphone, roles: ['student', 'staff', 'admin'] },
     // Only reps see the console
     { label: 'Rep Console', path: '/rep/transit', icon: Radio, roles: ['student'], requiresRep: true },
-    // Only admins see the admin panel
+    // Only admins see the admin panel & representatives list
     { label: 'Admin Panel', path: '/admin', icon: Shield, roles: ['admin'] },
+    { label: 'Representatives', path: '/admin/representatives', icon: Users, roles: ['admin'] },
   ];
 
   const visible = navItems.filter((item) => {

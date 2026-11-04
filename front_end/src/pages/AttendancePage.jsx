@@ -43,14 +43,62 @@ export default function AttendancePage() {
   const [filterStatus, setFilterStatus] = useState('pending');
 
   // ─── Form State (Students only) ─────────────────────────────
+  const [activeDelay, setActiveDelay] = useState(null);
   const [form, setForm] = useState({
-    date: '',
+    date: new Date().toISOString().split('T')[0],
     classHour: '1',
     course: '',
     facultyId: '',
     reason: '',
   });
   const [submitting, setSubmitting] = useState(false);
+
+  // ─── Check Bus Delay & Auto-Prefill Form ─────────────────────
+  const fetchDelayAndPrefill = useCallback(async () => {
+    try {
+      const res = await axiosClient.get('/student/bus/location');
+      const loc = res.data?.location || res.location || {};
+      const delayInfo = res.data?.delay || res.delay;
+      const isBusDelayed = loc.delayStatus === 'delayed' || delayInfo || loc.expectedDelayMinutes > 0;
+
+      if (isBusDelayed) {
+        const busNum = busInfo?.busId?.busNumber || 'Assigned Bus';
+        const delayMins = delayInfo?.expectedDelayMinutes || loc.expectedDelayMinutes || 20;
+        const delayRsn = delayInfo?.reason || loc.delayReason || 'Heavy traffic on route';
+        const tripId = loc.activeTripId || null;
+
+        const delayObj = {
+          busNumber: busNum,
+          expectedDelayMinutes: delayMins,
+          reason: delayRsn,
+          tripId: tripId,
+        };
+        setActiveDelay(delayObj);
+
+        // Auto-prefill the form!
+        setForm(prev => ({
+          ...prev,
+          date: prev.date || new Date().toISOString().split('T')[0],
+          reason: prev.reason || `Official bus delay: ${busNum} delayed by ${delayMins} mins (${delayRsn})`,
+          course: prev.course || 'CS101 - Core Engineering',
+        }));
+      } else {
+        setForm(prev => ({
+          ...prev,
+          date: prev.date || new Date().toISOString().split('T')[0],
+        }));
+      }
+    } catch (err) {
+      setForm(prev => ({
+        ...prev,
+        date: prev.date || new Date().toISOString().split('T')[0],
+      }));
+    }
+  }, [busInfo]);
+
+  useEffect(() => {
+    if (!isStaff) fetchDelayAndPrefill();
+  }, [isStaff, fetchDelayAndPrefill]);
 
   // ─── Fetch Staff List for Search Bar ────────────────────────
   useEffect(() => {
@@ -74,7 +122,14 @@ export default function AttendancePage() {
         ? `/staff/attendance?status=${filterStatus}`
         : '/student/attendance';
       const res = await axiosClient.get(endpoint);
-      setRequests(res.data || []);
+      const items = Array.isArray(res?.data)
+        ? res.data
+        : (Array.isArray(res?.data?.requests)
+          ? res.data.requests
+          : (Array.isArray(res?.requests)
+            ? res.requests
+            : (Array.isArray(res) ? res : [])));
+      setRequests(items);
     } catch (err) {
       setError(err?.message || 'Failed to load attendance requests.');
     } finally {
@@ -101,10 +156,17 @@ export default function AttendancePage() {
         facultyId: form.facultyId,
         reason: form.reason,
         busId: busInfo?.busId?._id || null,
+        tripId: activeDelay?.tripId || liveLocation?.activeTripId || null,
       });
 
       setSuccessMsg('Request submitted! The faculty will review it shortly.');
-      setForm({ ...form, date: '', course: '', reason: '', facultyId: '' });
+      setForm({
+        date: new Date().toISOString().split('T')[0],
+        classHour: '1',
+        course: '',
+        reason: '',
+        facultyId: '',
+      });
       setStaffSearch('');
       fetchRequests();
     } catch (err) {
@@ -161,6 +223,35 @@ export default function AttendancePage() {
       {successMsg && (
         <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/30 rounded-xl px-4 py-3 text-sm text-emerald-400">
           <CheckCircle className="w-4 h-4 shrink-0" />{successMsg}
+        </div>
+      )}
+
+      {/* ===== ACTIVE DELAY DETECTED BANNER ===== */}
+      {!isStaff && activeDelay && (
+        <div className="bg-amber-500/10 border-2 border-amber-500/50 rounded-2xl p-4 shadow-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="text-sm font-bold text-amber-400 flex items-center gap-2">
+              <span className="text-lg animate-pulse">🚌</span> Official Bus Delay Broadcasted
+            </p>
+            <p className="text-xs text-slate-300 mt-1">
+              Bus <strong className="text-white">{activeDelay.busNumber}</strong> reported a <strong className="text-amber-400">{activeDelay.expectedDelayMinutes}-minute delay</strong> ({activeDelay.reason}).
+              Your exemption form below has been automatically pre-filled.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setForm(prev => ({
+                ...prev,
+                date: new Date().toISOString().split('T')[0],
+                reason: `Official bus delay: ${activeDelay.busNumber} delayed by ${activeDelay.expectedDelayMinutes} mins (${activeDelay.reason})`,
+                course: prev.course || 'CS101 - Core Engineering',
+              }));
+            }}
+            className="px-3.5 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition self-start sm:self-auto shrink-0 shadow"
+          >
+            Refill Delay Details
+          </button>
         </div>
       )}
 

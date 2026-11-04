@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Shield, AlertCircle, Bus, MapPin, Users, Calendar, FileText, CheckCircle, Upload } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
@@ -12,7 +13,7 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
 });
 
-const TABS = ['Stops', 'Routes', 'Fleet', 'Assignments', 'Staff', 'Schedule', 'CSV Import'];
+const TABS = ['Stops', 'Routes', 'Fleet', 'Assignments', 'Representatives', 'Staff', 'Schedule', 'CSV Import'];
 
 // Helper component to handle map clicks
 function LocationMarker({ position, setPosition }) {
@@ -36,8 +37,10 @@ function MapFlyer({ position }) {
   return null;
 }
 
-export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('Stops');
+export default function AdminPage({ defaultTab }) {
+  const [searchParams] = useSearchParams();
+  const initialTab = defaultTab || searchParams.get('tab') || 'Stops';
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
@@ -48,6 +51,24 @@ export default function AdminPage() {
   const [buses, setBuses] = useState([]);
   const [users, setUsers] = useState([]);
   const [assignments, setAssignments] = useState([]);
+  const [representativeAssignments, setRepresentativeAssignments] = useState([]);
+
+  // Telemetry Heartbeat / Critical Trips State (Tier 3 Watchdog)
+  const [criticalTrips, setCriticalTrips] = useState([]);
+
+  useEffect(() => {
+    const fetchCritical = async () => {
+      try {
+        const res = await axiosClient.get('/admin/critical-trips');
+        setCriticalTrips(res.data?.trips || res.trips || []);
+      } catch (err) {
+        console.error('Failed to fetch critical trips', err);
+      }
+    };
+    fetchCritical();
+    const interval = setInterval(fetchCritical, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
   // ==================== STOPS STATE ====================
   const [stopSearch, setStopSearch] = useState('');
@@ -135,7 +156,15 @@ export default function AdminPage() {
         } catch (err) { console.error('Failed to fetch assignments', err); }
       }
 
-      // 6. Fetch Staff
+      // 6. Fetch Representatives
+      if (activeTab === 'Representatives' || activeTab === 'Assignments') {
+        try {
+          const repRes = await axiosClient.get('/admin/assignments?type=representatives');
+          setRepresentativeAssignments(repRes.data?.assignments || repRes.assignments || []);
+        } catch (err) { console.error('Failed to fetch representatives', err); }
+      }
+
+      // 7. Fetch Staff
       if (activeTab === 'Staff') {
         try {
           const staffRes = await axiosClient.get('/admin/staff');
@@ -306,6 +335,8 @@ export default function AdminPage() {
       });
       setSuccessMsg('Representative assigned successfully!');
       setRepStudentId(''); setRepRoleType('primary');
+      const repRes = await axiosClient.get('/admin/assignments?type=representatives');
+      setRepresentativeAssignments(repRes.data?.assignments || repRes.assignments || []);
     } catch (err) {
       setError(err.message || 'Failed to assign representative.');
     }
@@ -375,6 +406,49 @@ export default function AdminPage() {
           </button>
         ))}
       </div>
+
+      {/* 🚨 CRITICAL TELEMETRY ALERT BANNER (Tier 3 Redundancy) */}
+      {criticalTrips.length > 0 && (
+        <div className="bg-rose-500/10 border-2 border-rose-500/60 rounded-2xl p-4 shadow-xl shadow-rose-950/40">
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-2xl animate-pulse">🚨</span>
+            <h3 className="text-base font-bold text-rose-400">CRITICAL TELEMETRY ALERT</h3>
+            <span className="ml-auto text-xs font-bold bg-rose-600 text-white px-2.5 py-0.5 rounded-full shadow">
+              {criticalTrips.length} {criticalTrips.length === 1 ? 'Trip Offline' : 'Trips Offline'}
+            </span>
+          </div>
+          <div className="space-y-2.5">
+            {criticalTrips.map((trip) => (
+              <div key={trip._id} className="bg-[#0a1222] border border-rose-500/30 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-bold text-white flex items-center gap-2">
+                    <span className="text-emerald-400">{trip.busId?.busNumber}</span>
+                    <span className="text-slate-500">•</span>
+                    <span>{trip.routeId?.routeName}</span>
+                  </p>
+                  <p className="text-xs text-rose-300 mt-0.5 font-semibold">
+                    {trip.telemetryStatus === 'TRACKING_OFFLINE' ? '🚨 COMPLETELY OFFLINE' : '⚠️ GPS DISCONNECTED'}
+                    {trip.minutesSilent != null ? ` — ${trip.minutesSilent} min silent` : ''}
+                  </p>
+                  {trip.lastKnownLocation && (
+                    <p className="text-[11px] text-slate-400 mt-0.5 font-mono">
+                      Last Known: {trip.lastKnownLocation.lat?.toFixed(4)}, {trip.lastKnownLocation.lng?.toFixed(4)}
+                    </p>
+                  )}
+                </div>
+                {trip.activeRepresentativeId?.phone && (
+                  <a
+                    href={`tel:${trip.activeRepresentativeId.phone}`}
+                    className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 self-start sm:self-auto transition shadow"
+                  >
+                    📞 Call Rep ({trip.activeRepresentativeId.phone})
+                  </a>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Alerts */}
       {error && (
@@ -676,6 +750,167 @@ export default function AdminPage() {
                   );
                })}
              </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================== REPRESENTATIVES TAB ==================== */}
+      {!loading && activeTab === 'Representatives' && (
+        <div className="space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Users className="w-5 h-5 text-emerald-400" /> Representatives & Assistant Reps
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Overview of Primary Representatives and Vice (Assistant) Representatives assigned to each college bus for 2-tier failover protection.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <span className="text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                Primary Reps: {representativeAssignments.filter(r => r.roleType === 'primary').length}
+              </span>
+              <span className="text-xs font-semibold bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 px-3 py-1.5 rounded-xl">
+                Assistant Reps: {representativeAssignments.filter(r => r.roleType === 'vice').length}
+              </span>
+            </div>
+          </div>
+
+          {/* Quick Assign / Reassign Form */}
+          <div className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-6 shadow-xl">
+            <h3 className="text-base font-bold text-white mb-4 flex items-center gap-2">
+              <Shield className="w-4 h-4 text-emerald-400" /> Assign or Reassign Representative
+            </h3>
+            <form onSubmit={handleAssignRep} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Student</label>
+                <select required value={repStudentId} onChange={(e) => setRepStudentId(e.target.value)} className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-3 py-2 text-white text-xs focus:border-emerald-500 focus:outline-none">
+                  <option value="">Select student</option>
+                  {users.map(u => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Bus</label>
+                <select required value={repBusId} onChange={(e) => setRepBusId(e.target.value)} className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-3 py-2 text-white text-xs focus:border-emerald-500 focus:outline-none">
+                  <option value="">Select bus</option>
+                  {buses.map(b => <option key={b._id} value={b._id}>{b.busNumber} ({b.registrationNumber})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Role Type</label>
+                <select required value={repRoleType} onChange={(e) => setRepRoleType(e.target.value)} className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-3 py-2 text-white text-xs focus:border-emerald-500 focus:outline-none">
+                  <option value="primary">Primary Representative</option>
+                  <option value="vice">Vice / Assistant Representative</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs text-slate-400 mb-1">Route</label>
+                <select required value={repRouteId} onChange={(e) => setRepRouteId(e.target.value)} className="w-full bg-[#0e192f] border border-[#1b2b4c] rounded-xl px-3 py-2 text-white text-xs focus:border-emerald-500 focus:outline-none">
+                  <option value="">Select route</option>
+                  {routes.map(r => <option key={r._id} value={r._id}>{r.routeName} ({r.routeNumber})</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
+                <button type="submit" className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-emerald-600/30">
+                  Save Representative Assignment
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Roster Table / Card Grid grouped by Bus */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {buses.map(bus => {
+              const repsForBus = representativeAssignments.filter(r => r.busId?._id === bus._id || r.busId === bus._id);
+              const primaryRep = repsForBus.find(r => r.roleType === 'primary');
+              const viceRep = repsForBus.find(r => r.roleType === 'vice');
+              const assignedRoute = repsForBus[0]?.routeId || routes.find(r => r.busId?._id === bus._id || r.busId === bus._id);
+
+              return (
+                <div key={bus._id} className="bg-[#0c162b] border border-[#16274a] rounded-2xl p-5 shadow-xl flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-center justify-between border-b border-[#16274a] pb-3 mb-4">
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <Bus className="w-4 h-4 text-emerald-400" /> Bus {bus.busNumber}
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {assignedRoute ? `${assignedRoute.routeName} (${assignedRoute.routeNumber})` : 'Route unassigned'}
+                        </p>
+                      </div>
+                      <span className="text-xs font-mono bg-[#16274a] text-slate-300 px-2.5 py-1 rounded-lg">
+                        {bus.registrationNumber || 'TN-38'}
+                      </span>
+                    </div>
+
+                    <div className="space-y-3">
+                      {/* Primary Representative */}
+                      <div className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl p-3.5 flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full">
+                              Primary Rep
+                            </span>
+                            {primaryRep?.status === 'active' && (
+                              <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Active
+                              </span>
+                            )}
+                          </div>
+                          {primaryRep ? (
+                            <>
+                              <p className="text-sm font-bold text-white">{primaryRep.representativeId?.name}</p>
+                              <p className="text-xs text-slate-400">{primaryRep.representativeId?.email}</p>
+                              {primaryRep.representativeId?.phone && (
+                                <p className="text-xs text-slate-300 mt-0.5 font-mono">📞 {primaryRep.representativeId.phone}</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-xs text-slate-500 italic mt-1">No primary representative assigned</p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Assistant / Vice Representative */}
+                      <div className="bg-[#0e192f] border border-[#1b2b4c] rounded-xl p-3.5 flex items-start justify-between">
+                        <div>
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-2 py-0.5 rounded-full">
+                              Assistant Rep (Vice)
+                            </span>
+                            {viceRep?.status === 'active' && (
+                              <span className="text-[10px] text-cyan-400 font-semibold flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" /> Ready for Failover
+                              </span>
+                            )}
+                          </div>
+                          {viceRep ? (
+                            <>
+                              <p className="text-sm font-bold text-white">{viceRep.representativeId?.name}</p>
+                              <p className="text-xs text-slate-400">{viceRep.representativeId?.email}</p>
+                              {viceRep.representativeId?.phone && (
+                                <p className="text-xs text-slate-300 mt-0.5 font-mono">📞 {viceRep.representativeId.phone}</p>
+                              )}
+                            </>
+                          ) : (
+                            <p className="text-xs text-amber-400/80 italic mt-1">⚠️ No assistant rep assigned (Tier 2 uncovered)</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-3 border-t border-[#16274a] flex items-center justify-between text-xs text-slate-400">
+                    <span>Capacity: {bus.capacity} seats</span>
+                    <span className="text-slate-400">
+                      Failover Status: <strong className={viceRep ? "text-emerald-400 font-semibold" : "text-amber-400 font-semibold"}>
+                        {viceRep ? 'Protected (2/2 Reps)' : 'Partial (1/2 Reps)'}
+                      </strong>
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}

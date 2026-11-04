@@ -1,9 +1,12 @@
 import app from './app.js';
 import { connectDB } from './config/database.js';
 import { env } from './config/env.js';
+import { startTelemetryWatchdog } from './modules/tracking/telemetryWatchdog.js';
 
 const startServer = async () => {
   await connectDB();
+
+  startTelemetryWatchdog();
 
   const server = app.listen(env.PORT, () => {
     console.log(`\n🚀 Server running on http://localhost:${env.PORT}`);

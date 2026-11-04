@@ -95,11 +95,29 @@ export const reportTripDelay = async ({ tripId, repId, updateType = 'delay', rea
   });
   if (updateType === 'delay') {
     trip.delayStatus = 'delayed';
+    trip.expectedDelayMinutes = expectedDelayMinutes != null ? expectedDelayMinutes : 0;
     await trip.save();
     await TripEvent.create({
       tripId: trip._id, eventType: 'delay_reported', actorId: repId,
       details: { updateId: update._id, expectedDelayMinutes: expectedDelayMinutes != null ? expectedDelayMinutes : 0 },
     });
+
+    try {
+      const Announcement = (await import('../../models/Announcement.js')).default;
+      const Bus = (await import('../../models/Bus.js')).default;
+      const busDoc = await Bus.findById(trip.busId);
+      await Announcement.create({
+        title: `Bus ${busDoc?.busNumber || ''} Delayed (~${expectedDelayMinutes} min)`,
+        message: `Official delay broadcast: Bus ${busDoc?.busNumber || ''} is experiencing a delay of approximately ${expectedDelayMinutes} minutes due to ${reason || 'Traffic'}. Students riding this bus can submit an attendance exemption request.`,
+        createdBy: repId,
+        targetType: 'bus',
+        targetId: trip.busId,
+        isPublished: true,
+        publishedAt: new Date(),
+      });
+    } catch (e) {
+      console.error('Failed to create announcement for delay', e);
+    }
   }
   await writeAuditLog({ actorId: repId, action: 'TRIP_UPDATE_REPORTED', resourceType: 'TripUpdate', resourceId: update._id, ipAddress: ip, correlationId });
   return { update };

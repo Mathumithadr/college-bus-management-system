@@ -74,6 +74,7 @@ export default function App() {
 
               {/* Main Admin Panel (all tabs inside) */}
               <Route path="/admin" element={<ProtectedRoute requiredRole="admin"><AdminPage /></ProtectedRoute>} />
+              <Route path="/admin/representatives" element={<ProtectedRoute requiredRole="admin"><AdminPage defaultTab="Representatives" /></ProtectedRoute>} />
 
               {/* Separate Admin pages */}
               <Route path="/admin/late-buses" element={<ProtectedRoute requiredRole="admin"><AdminLateBusesPage /></ProtectedRoute>} />

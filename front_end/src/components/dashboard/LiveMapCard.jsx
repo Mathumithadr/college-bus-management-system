@@ -1,6 +1,6 @@
 // LiveMapCard — Leaflet interactive map card with glowing route lines, stop markers, bus icon, and GPS toggle
-import React, { useState } from 'react';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, useMap } from 'react-leaflet';
+import React, { useState, useEffect } from 'react';
+import { MapContainer, TileLayer, Polyline, CircleMarker, Marker, Tooltip, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { MapPin } from 'lucide-react';
 
@@ -57,14 +57,28 @@ export default function LiveMapCard({ busInfo, liveLocation }) {
   // liveGps toggle controls whether live tracking is enabled
   const [liveGps, setLiveGps] = useState(true);
 
-  // Extract stops safely from bus assignment
-  const stops = busInfo?.route?.stops || [];
+  // Extract stops safely from route object or bus assignment
+  let stops = busInfo?.stops || busInfo?.route?.stops || busInfo?.routeId?.stops || [];
+
+  // Ensure KCT Campus is included as the terminal stop
+  if (stops.length > 0 && !stops.some((s) => s.name?.toLowerCase().includes('kct') || s.name?.toLowerCase().includes('kumaraguru'))) {
+    stops = [
+      ...stops,
+      {
+        _id: 'kct-campus-terminal',
+        name: 'KCT Campus (Saravanampatti Main Gate)',
+        latitude: 11.08270,
+        longitude: 76.98980,
+        sequence: stops.length + 1,
+      },
+    ];
+  }
 
   // Filter valid stop coordinates for the polyline
   const validStops = stops
-    .filter((s) => typeof s.latitude === 'number' && typeof s.longitude === 'number' && !isNaN(s.latitude) && !isNaN(s.longitude))
+    .filter((s) => typeof s?.latitude === 'number' && typeof s?.longitude === 'number' && !isNaN(s.latitude) && !isNaN(s.longitude))
     .slice()
-    .sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+    .sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
 
   // Determine bus GPS coordinates safely with numerical validation
   const liveLat = Number(liveLocation?.latitude ?? liveLocation?.location?.latitude);
@@ -79,8 +93,47 @@ export default function LiveMapCard({ busInfo, liveLocation }) {
     ? [validStops[0].latitude, validStops[0].longitude]
     : defaultCenter;
 
-  // Build the route polyline positions
+  // Build direct fallback route polyline positions
   const routePositions = validStops.map((s) => [s.latitude, s.longitude]);
+
+  // Real turn-by-turn road geometry fetched from OSRM (OpenStreetMap routing engine)
+  const [roadGeometry, setRoadGeometry] = useState(null);
+
+  useEffect(() => {
+    if (validStops.length < 2) {
+      setRoadGeometry(null);
+      return;
+    }
+
+    // OSRM expects coordinates formatted as: lng,lat;lng,lat;...
+    const coordsString = validStops.map((s) => `${s.longitude},${s.latitude}`).join(';');
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson`;
+
+    const controller = new AbortController();
+
+    fetch(url, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`OSRM responded with status ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (data?.routes?.[0]?.geometry?.coordinates) {
+          // Convert GeoJSON [longitude, latitude] to Leaflet [latitude, longitude]
+          const latLngs = data.routes[0].geometry.coordinates.map(([lng, lat]) => [lat, lng]);
+          setRoadGeometry(latLngs);
+        }
+      })
+      .catch((err) => {
+        if (err.name !== 'AbortError') {
+          console.warn('OSRM road routing unavailable, falling back to direct route:', err.message);
+        }
+      });
+
+    return () => controller.abort();
+  }, [validStops.map((s) => `${s._id || s.name}-${s.latitude}-${s.longitude}`).join(';')]);
+
+  // Use real road geometry if available; otherwise smoothly fallback to direct line
+  const activePolylinePositions = roadGeometry && roadGeometry.length > 0 ? roadGeometry : routePositions;
 
   return (
     <div className="rounded-2xl bg-[#0c162b] border border-[#16274a] p-4 shadow-xl space-y-3">
@@ -107,23 +160,29 @@ export default function LiveMapCard({ busInfo, liveLocation }) {
           {/* Auto-fit map bounds when stops load */}
           {validStops.length > 1 && <MapBoundsController stops={validStops} />}
 
-          {/* Glowing emerald route polyline connecting stop coordinates */}
-          {layers.yourRoute && routePositions.length > 1 && (
+          {/* Glowing emerald route polyline following real roads */}
+          {layers.yourRoute && activePolylinePositions.length > 1 && (
             <Polyline
-              positions={routePositions}
-              pathOptions={{ color: '#10b981', weight: 5, opacity: 0.85, dashArray: '10 5' }}
+              positions={activePolylinePositions}
+              pathOptions={{ color: '#10b981', weight: 5, opacity: 0.9 }}
             />
           )}
 
           {/* Stop circle markers */}
           {layers.stops &&
-            validStops.map((stop) => (
+            validStops.map((stop, index) => (
               <CircleMarker
-                key={stop._id || stop.sequence}
+                key={stop._id || stop.sequence || index}
                 center={[stop.latitude, stop.longitude]}
                 radius={8}
                 pathOptions={{ color: '#10b981', fillColor: '#ffffff', fillOpacity: 1, weight: 3 }}
-              />
+              >
+                <Tooltip direction="top" offset={[0, -8]} opacity={0.95}>
+                  <div className="font-sans text-xs font-bold text-slate-900">
+                    {stop.name}
+                  </div>
+                </Tooltip>
+              </CircleMarker>
             ))}
 
           {/* Bus marker rendered when live coordinates are available or default stop exists */}

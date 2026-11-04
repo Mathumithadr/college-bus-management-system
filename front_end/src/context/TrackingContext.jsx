@@ -10,7 +10,7 @@ import axiosClient from '../api/axiosClient';
 import { useAuth } from './AuthContext';
 
 const TrackingContext = createContext(null);
-const POLL_INTERVAL_MS = 30000;   // 30 seconds, per your requirement
+const POLL_INTERVAL_MS = 3000;   // 3 seconds for responsive live tracking during demo
 
 export function TrackingProvider({ children }) {
   const { user } = useAuth();

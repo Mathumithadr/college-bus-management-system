@@ -27,7 +27,12 @@ router.get('/buses', repAuth, async (req, res, next) => {
     const assignments = await RepresentativeAssignment.find({
       representativeId: req.user._id,
       status: 'active',
-    }).populate('busId routeId');
+    })
+      .populate('busId')
+      .populate({
+        path: 'routeId',
+        populate: { path: 'stops', select: 'name latitude longitude sequence' },
+      });
     res.json({ success: true, data: { buses: assignments } });
   } catch (err) { next(err); }
 });

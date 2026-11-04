@@ -78,7 +78,7 @@ export const respondToRepresentativeHandover = async ({ tripId, handoverId, vice
 
 // Vice claims control after >= 5 minutes of primary GPS silence (conditional atomic update)
 export const claimRepresentativeControl = async ({ tripId, viceRepId, ip, correlationId }) => {
-  const INACTIVITY_MS = 5 * 60 * 1000;
+  const INACTIVITY_MS = 3 * 60 * 1000;
   const cutoff = new Date(Date.now() - INACTIVITY_MS);
 
   const session = await mongoose.startSession();
@@ -100,7 +100,7 @@ export const claimRepresentativeControl = async ({ tripId, viceRepId, ip, correl
 
       const primarySilent = !lastPrimaryPing || new Date(lastPrimaryPing.recordedAt) <= cutoff;
       if (!primarySilent) {
-        throw stateConflictError('Primary representative has sent GPS pings within the last 5 minutes');
+        throw stateConflictError('Primary representative has sent GPS pings within the last 3 minutes');
       }
 
       const result = await Trip.findOneAndUpdate(

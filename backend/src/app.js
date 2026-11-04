@@ -34,14 +34,25 @@ app.use(morgan(env.NODE_ENV === 'development' ? 'dev' : 'combined'));
 // Global rate limit
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 300,
+  max: 10000,
   standardHeaders: true,
   legacyHeaders: false,
+  skip: (req) => {
+    // Skip rate limiting in development or localhost during live testing/demo
+    const ip = req.ip || req.connection?.remoteAddress || '';
+    return (
+      env.NODE_ENV === 'development' ||
+      ip === '127.0.0.1' ||
+      ip === '::1' ||
+      ip === '::ffff:127.0.0.1' ||
+      ip.includes('127.0.0.1')
+    );
+  },
   message: {
     success: false,
     code: 'RATE_LIMITED',
     message: 'Too many requests.',
-    retryAfterSeconds: 300,
+    retryAfterSeconds: 60,
   },
 });
 app.use('/api', limiter);

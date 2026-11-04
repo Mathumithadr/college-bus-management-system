@@ -15,8 +15,50 @@ export default function BusTrackingPage() {
   const currentRoute = busInfo?.routeId || busInfo?.route;
   const currentBus = busInfo?.busId || busInfo?.bus;
 
+  // Extract stops safely from route
+  const stopsList = (currentRoute?.stops || []).slice();
+  if (stopsList.length > 0 && !stopsList.some((s) => s.name?.toLowerCase().includes('kct') || s.name?.toLowerCase().includes('kumaraguru'))) {
+    stopsList.push({
+      _id: 'kct-campus-terminal',
+      name: 'KCT Campus (Saravanampatti Main Gate)',
+      sequence: stopsList.length + 1,
+      latitude: 11.08270,
+      longitude: 76.98980,
+    });
+  }
+
+  // Determine bus GPS coordinates safely with numerical validation
+  const liveLat = Number(liveLocation?.latitude ?? liveLocation?.location?.latitude);
+  const liveLng = Number(liveLocation?.longitude ?? liveLocation?.location?.longitude);
+  const hasLiveCoords = !isNaN(liveLat) && !isNaN(liveLng) && liveLat !== 0 && liveLng !== 0;
+
   // How far along the route are we?
-  const currentSeq = liveLocation?.currentStopSequence || 0;
+  let currentSeq = Number(liveLocation?.currentStopSequence || liveLocation?.location?.currentStopSequence || 0);
+
+  // Auto-detect current stop sequence from live GPS coordinates if backend sequence is lagging or 0
+  if (hasLiveCoords && stopsList.length > 0) {
+    let closestIndex = -1;
+    let minDistance = Infinity;
+
+    stopsList.forEach((stop, idx) => {
+      if (typeof stop?.latitude === 'number' && typeof stop?.longitude === 'number') {
+        const dLat = (stop.latitude - liveLat) * 111000;
+        const dLng = (stop.longitude - liveLng) * 111000 * Math.cos(liveLat * (Math.PI / 180));
+        const dist = Math.sqrt(dLat * dLat + dLng * dLng);
+        if (dist < minDistance) {
+          minDistance = dist;
+          closestIndex = idx;
+        }
+      }
+    });
+
+    if (closestIndex !== -1 && minDistance <= 350) {
+      const detectedSeq = stopsList[closestIndex].sequence != null ? stopsList[closestIndex].sequence : (closestIndex + 1);
+      if (detectedSeq > currentSeq) {
+        currentSeq = detectedSeq;
+      }
+    }
+  }
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
@@ -61,36 +103,81 @@ export default function BusTrackingPage() {
           <MapPin className="w-5 h-5 text-emerald-400" /> Route Progress
         </h2>
 
-        {!currentRoute?.stops || currentRoute.stops.length === 0 ? (
-          <p className="text-sm text-slate-500">No stops configured for this route.</p>
-        ) : (
-          <div className="relative pl-6 space-y-6">
-            <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-slate-700" />
-            {currentRoute.stops.map((stop, index) => {
-              const isPassed = stop.sequence < currentSeq;
-              const isNear = stop.sequence === currentSeq + 1;
-              const isFirst = stop.sequence === 1;
+        {(() => {
+          if (stopsList.length === 0) {
+            return <p className="text-sm text-slate-500">No stops configured for this route.</p>;
+          }
 
-              return (
-                <div key={stop._id || index} className="relative">
-                  <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 flex items-center justify-center bg-[#070d18] ${isPassed ? 'border-slate-600' : isNear || (currentSeq === 0 && isFirst) ? 'border-emerald-400 shadow-lg shadow-emerald-500/40' : 'border-slate-700'
+          return (
+            <div className="relative pl-6 space-y-6">
+              <div className="absolute left-2.5 top-2 bottom-2 w-0.5 bg-slate-700" />
+              {stopsList.map((stop, index) => {
+                const seq = stop.sequence != null ? stop.sequence : index + 1;
+                const isPassed = currentSeq > 0 && seq < currentSeq;
+                const isCurrent = currentSeq > 0 && seq === currentSeq;
+                const isNext = (currentSeq === 0 && seq === 1) || (currentSeq > 0 && seq === currentSeq + 1);
+
+                return (
+                  <div key={stop._id || index} className="relative">
+                    <div className={`absolute -left-6 top-1 w-5 h-5 rounded-full border-2 flex items-center justify-center bg-[#070d18] ${
+                      isCurrent
+                        ? 'border-emerald-400 shadow-lg shadow-emerald-500/50 ring-2 ring-emerald-400/30'
+                        : isNext
+                        ? 'border-cyan-400 shadow-md shadow-cyan-500/30'
+                        : isPassed
+                        ? 'border-slate-600'
+                        : 'border-slate-700'
                     }`}>
-                    <div className={`w-2 h-2 rounded-full ${isPassed ? 'bg-slate-600' : isNear || (currentSeq === 0 && isFirst) ? 'bg-emerald-400 animate-pulse' : 'bg-slate-700'
+                      <div className={`w-2 h-2 rounded-full ${
+                        isCurrent
+                          ? 'bg-emerald-400 animate-pulse'
+                          : isNext
+                          ? 'bg-cyan-400 animate-pulse'
+                          : isPassed
+                          ? 'bg-slate-600'
+                          : 'bg-slate-700'
                       }`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className={`text-sm font-bold ${
+                          isCurrent
+                            ? 'text-emerald-400'
+                            : isNext
+                            ? 'text-cyan-400'
+                            : isPassed
+                            ? 'text-slate-500'
+                            : 'text-slate-300'
+                        }`}>
+                          {stop.name}
+                        </h3>
+                        {isCurrent && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            Current Bus Location
+                          </span>
+                        )}
+                        {isNext && (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                            Approaching
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        {isPassed
+                          ? '✓ Passed'
+                          : isCurrent
+                          ? '📍 Bus is here'
+                          : isNext
+                          ? '→ Next Stop'
+                          : 'Upcoming'}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className={`text-sm font-bold ${isPassed ? 'text-slate-500' : isNear || (currentSeq === 0 && isFirst) ? 'text-emerald-400' : 'text-slate-300'}`}>
-                      {stop.name}
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      {isPassed ? '✓ Passed' : isNear || (currentSeq === 0 && isFirst) ? '→ Next Stop' : 'Upcoming'}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                );
+              })}
+            </div>
+          );
+        })()}
       </div>
       {/* ===== LAST UPDATE TIME ===== */}
       {liveLocation?.recordedAt && (

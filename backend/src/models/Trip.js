@@ -62,6 +62,15 @@ const tripSchema = new mongoose.Schema(
       enum: ['GOOD', 'POOR', null],
       default: null,
     },
+    telemetryStatus: {
+      type: String,
+      enum: ['ACTIVE', 'GPS_DISCONNECTED', 'TRACKING_OFFLINE'],
+      default: 'ACTIVE',
+    },
+    lastPingAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

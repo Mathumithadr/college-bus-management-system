@@ -96,11 +96,13 @@ router.post('/schedules/activate', [...adminAuth, body('date').isISO8601(), body
 // --- CSV Import ---
 router.post('/students/import', [...adminAuth, upload.single('file')], importStudentsController);
 router.get('/late-buses', adminAuth, getLateBusesController);
+router.get('/critical-trips', adminAuth, getCriticalTripsController);
 
 import { 
   createStaffController, 
   getStaffListController, 
-  toggleStaffStatusController 
+  toggleStaffStatusController,
+  getCriticalTripsController,
 } from './admin.controller.js';
 
 // --- Staff Management ---

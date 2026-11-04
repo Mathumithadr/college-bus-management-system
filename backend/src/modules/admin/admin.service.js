@@ -357,9 +357,17 @@ export const updateUser = async () => {};
 export const listBusAssignments = async (type = 'students') => {
   if (type === 'students') {
     const assignments = await StudentBusAssignment.find({ status: 'active' })
-      .populate('studentId', 'name email')
-      .populate('busId', 'busNumber')
-      .populate('routeId', 'routeName');
+      .populate('studentId', 'name email rollNumber department')
+      .populate('busId', 'busNumber capacity')
+      .populate('routeId', 'routeName routeNumber');
+    return { assignments };
+  }
+  if (type === 'representatives' || type === 'reps') {
+    const assignments = await RepresentativeAssignment.find({ status: 'active' })
+      .populate('representativeId', 'name email phone')
+      .populate('busId', 'busNumber registrationNumber capacity')
+      .populate('routeId', 'routeName routeNumber')
+      .sort({ busId: 1, roleType: 1 });
     return { assignments };
   }
   return { assignments: [] };
@@ -655,4 +663,36 @@ export const listLateBuses = async () => {
     .sort({ startTime: -1 });
 
   return { lateBuses };
+};
+
+// ==================== CRITICAL TRIPS ====================
+export const listCriticalTrips = async () => {
+  const Trip = (await import('../../models/Trip.js')).default;
+  const BusLocationUpdate = (await import('../../models/BusLocationUpdate.js')).default;
+
+  const trips = await Trip.find({
+    tripStatus: 'in_progress',
+    telemetryStatus: { $in: ['GPS_DISCONNECTED', 'TRACKING_OFFLINE'] },
+  })
+    .populate('busId', 'busNumber')
+    .populate('routeId', 'routeName routeNumber')
+    .populate('activeRepresentativeId', 'name email phone')
+    .sort({ telemetryStatus: 1, lastPingAt: 1 });
+
+  // Enrich with last known location
+  const enriched = await Promise.all(trips.map(async (trip) => {
+    const lastPing = await BusLocationUpdate.findOne({ tripId: trip._id })
+      .sort({ recordedAt: -1 });
+    return {
+      ...trip.toObject(),
+      lastKnownLocation: lastPing
+        ? { lat: lastPing.latitude, lng: lastPing.longitude, time: lastPing.recordedAt }
+        : null,
+      minutesSilent: lastPing
+        ? Math.floor((Date.now() - new Date(lastPing.recordedAt).getTime()) / 60000)
+        : null,
+    };
+  }));
+
+  return { trips: enriched };
 };

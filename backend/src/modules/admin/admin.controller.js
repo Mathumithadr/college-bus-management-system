@@ -8,6 +8,7 @@ import {
   activateSchedule,
   importStudentsFromCSV,
   listLateBuses,
+  listCriticalTrips,
   createBus,
   listBuses,
   getBusById,
@@ -410,6 +411,14 @@ export const toggleStaffStatusController = async (req, res, next) => {
 export const getLateBusesController = async (req, res, next) => {
   try {
     const result = await listLateBuses();
+    return sendSuccess(res, result);
+  } catch (err) { next(err); }
+};
+
+// ==================== CRITICAL TRIPS ====================
+export const getCriticalTripsController = async (req, res, next) => {
+  try {
+    const result = await listCriticalTrips();
     return sendSuccess(res, result);
   } catch (err) { next(err); }
 };
